@@ -1,5 +1,4 @@
-from dotenv import load_dotenv
-from pydantic import BaseModel
+# from pydantic import BaseModel
 # from langchain_openai import ChatOpenAI
 # from langchain_anthropic import ChatAnthropic
 from langchain_ollama import ChatOllama
@@ -8,6 +7,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 # from langchain.agents import create_react_agent, AgentExecutor
 from langchain_classic.agents import create_tool_calling_agent, AgentExecutor
 import subprocess
+import ResearchResponse
 
 
 def check_ollama_model(model_name: str):
@@ -26,13 +26,6 @@ def check_ollama_model(model_name: str):
     except subprocess.CalledProcessError as e:
         print(f"Error while checking or pulling model '{model_name}':\n{e}")
         raise
-
-
-class ResearchResponse(BaseModel):
-    topic: str
-    summary: str
-    source: list[str]
-    tools_used: list[str]
 
 
 class Agent:

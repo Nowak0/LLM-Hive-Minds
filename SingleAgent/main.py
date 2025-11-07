@@ -1,5 +1,5 @@
 from tools import *
-from agent import *
+from Agent import *
 
 ollama_model = "gpt-oss:20b"
 tools = [search_tool, wiki_tool, save_tool]
