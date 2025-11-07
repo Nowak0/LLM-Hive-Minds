@@ -1,11 +1,13 @@
-langchain
+langchain~=1.0.2
 wikipedia
-langchain-community
-langchain-core
+langchain-community~=0.4.1
+langchain-core~=1.0.1
 langchain-openai
 langchain-ollama
 langchain-anthropic
 python-dotenv
-pydantic
+pydantic~=2.12.3
 duckduckgo-search
 ddgs
+langgraph~=1.0.2
+typing_extensions~=4.15.0
