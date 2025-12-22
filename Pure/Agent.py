@@ -46,9 +46,9 @@ class Agent():
         ]
 
 
-    def ollama_generate(self, role: str, user_input: str, temperature: float = 0.7, max_tokens: int = 300):
+    def ollama_generate(self, user_input: str, temperature: float = 0.7, max_tokens: int = 300):
         """Get a response from Ollama /api/generate"""
-        prompt = f"SYSTEM:{role}   USER:{user_input}   ASSISTANT:"
+        prompt = f"SYSTEM:{self.role}   USER:{user_input}   ASSISTANT:"
         package = {
             "model": self.model,
             "prompt": prompt,
