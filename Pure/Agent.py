@@ -29,7 +29,7 @@ def quit_ollama(model: str):
     try:
         subprocess.run(["ollama", "stop", model])
     except Exception as e:
-        pass
+        print(e)
 
 
 class Agent():
@@ -38,7 +38,7 @@ class Agent():
         self.role = role
 
 
-    def build_chat_prompt(self, user_input: str):
+    def build_chat_prompt(self, user_input):
         """Build a chat prompt"""
         return [
             {"role": "system", "content": self.role},

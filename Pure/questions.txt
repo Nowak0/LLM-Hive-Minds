@@ -1,0 +1,3 @@
+Find a rational approximation of π with denominator less than 1,000
+
+Estimate how many integer solutions satisfy x² + y² ≤ 10⁶.
