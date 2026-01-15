@@ -2,7 +2,6 @@ import subprocess
 import requests
 
 
-OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
 OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 
 
@@ -46,25 +45,7 @@ class Agent():
         ]
 
 
-    def ollama_generate(self, user_input: str, temperature: float = 0.7, max_tokens: int = 300):
-        """Get a response from Ollama /api/generate"""
-        prompt = f"SYSTEM:{self.role}   USER:{user_input}   ASSISTANT:"
-        package = {
-            "model": self.model,
-            "prompt": prompt,
-            "options": {
-                "temperature": temperature,
-                "num_predict": max_tokens,
-            },
-            "stream": False
-        }
-
-        response = requests.post(OLLAMA_GENERATE_URL, json=package)
-        response.raise_for_status()
-        return response.json()["response"]
-
-
-    def ollama_chat(self, prompt: list[dict], temperature: float = 0.7, max_tokens: int = 300):
+    def ollama_chat(self, prompt: list[dict], temperature: float = 0.7, max_tokens: int = 2000):
         """Get a response from Ollama /api/chat"""
         package = {
             "model": self.model,
