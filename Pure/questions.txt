@@ -1,3 +1,5 @@
 Find a rational approximation of π with denominator less than 1,000
 
+Find the length of the hypotenuse of a right triangle with legs 3 and 4
+
 Let M be the midpoint of {AB} in regular tetrahedron ABCD p/q=cos(CMD) is irreducible fraction, what is the value of p+q?

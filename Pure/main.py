@@ -14,10 +14,10 @@ def normalize_results(results):
     for res in results:
         try:
             value = float(res["final_answer"])
-            # if math.isnan(value) or math.isinf(value):
-            #     continue
-            # else:
-            normalized_results.append(value)
+            if math.isnan(value) or math.isinf(value):
+                continue
+            else:
+                normalized_results.append(value)
         except Exception as e:
             print("Could not normalize calculated result:", e)
             continue
@@ -152,7 +152,7 @@ def main():
         agent_evaluator = Agent(model=MODEL, role=role_evaluator)
         user_input = input("> ")
 
-        research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.25, max_tokens=1000)
+        research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.25, max_tokens=2000)
         results = handle_calculations(role=role_calculator, user_input=user_input, research=research, max_tokens=150)
         print("POSSIBLE ANSWERS: ", results)
         output_evaluation_1 = handle_evaluation(agent=agent_evaluator, user_input=user_input,

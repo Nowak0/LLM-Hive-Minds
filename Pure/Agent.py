@@ -54,7 +54,8 @@ class Agent():
                 "temperature": temperature,
                 "num_predict": max_tokens,
             },
-            "stream": False
+            "stream": False,
+            "format": "json"
         }
 
         response = requests.post(OLLAMA_CHAT_URL, json=package)
