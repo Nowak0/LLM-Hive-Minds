@@ -3,8 +3,9 @@ import json
 import math
 from Pure.Agent import Agent, check_ollama_model, quit_ollama
 
-CALCULATION_RUNS = 9
+CALCULATION_RUNS = 3
 MODEL = "llama3.1:8b"
+CONSOLE_LOGS = True
 
 ROLE_RESEARCHER = """You are a researcher that gathers insight about given math problem.
 
@@ -27,7 +28,7 @@ TASK:
 Compute the final numeric/symbolic result for the given expression/problem.
 
 OUTPUT (STRICT):
-- Return EXACTLY one JSON object with exactly one key: "final_answer".
+- Return EXACTLY one JSON object with exactly one key (checkout OUTPUT FORMAT): "final_answer".!!
 - Do NOT output any extra keys, text, markdown, or whitespace outside JSON.
 
 FINAL_ANSWER RULES:
@@ -35,9 +36,9 @@ FINAL_ANSWER RULES:
 - Prefer EXACT form when possible (e.g., 2/3, sqrt(2), pi, 3*sqrt(5)/2).
 - Do NOT round unless the user explicitly requests rounding/decimal approximation.
 - If you must output a decimal (because the prompt requires it), output full precision available from exact conversion, without commentary.
+- If there is a common fraction, do not decompose it into nominator and denominator -> provide x/y style. 
 - Use standard ASCII: "sqrt(2)" not "√2".
-- If there are multiple valid solutions, output them as a JSON string with a deterministic separator: "x1; x2; ...".
-- If there is no valid solution, output "#no_solution".
+- If there is no valid solution, output {"final_answer": "#no_solution"}.
 
 OUTPUT FORMAT:
 {
@@ -52,12 +53,17 @@ METHOD:
 3) Only at the end produce the final exact result.
 
 OUTPUT (STRICT):
-- Return EXACTLY one JSON object with exactly one key: "final_answer".
+- Return EXACTLY one JSON object with exactly one key (checkout OUTPUT FORMAT): "final_answer".!!
 - Do NOT output any extra keys, text, markdown, or whitespace outside JSON.
 
 FINAL_ANSWER RULES:
-- Prefer exact forms: fractions, sqrt(), pi.
-- Do not round unless explicitly requested.
+- Provide ONE final result only.
+- Prefer EXACT form when possible (e.g., 2/3, sqrt(2), pi, 3*sqrt(5)/2).
+- Do NOT round unless the user explicitly requests rounding/decimal approximation.
+- If you must output a decimal (because the prompt requires it), output full precision available from exact conversion, without commentary.
+- If there is a common fraction, do not decompose it into nominator and denominator -> provide x/y style. 
+- Use standard ASCII: "sqrt(2)" not "√2".
+- If there is no valid solution, output {"final_answer": "#no_solution"}.
 
 FORMAT:
 {
@@ -72,12 +78,17 @@ METHOD:
 3) Perform cancellation and gcd reductions frequently to avoid overflow/mistakes.
 
 OUTPUT (STRICT):
-- Return EXACTLY one JSON object with exactly one key: "final_answer".
+- Return EXACTLY one JSON object with exactly one key (checkout OUTPUT FORMAT): "final_answer".!!
 - Do NOT output any extra keys, text, markdown, or whitespace outside JSON.
 
 FINAL_ANSWER RULES:
-- Prefer exact fractions and symbolic constants.
-- Do not round unless explicitly requested.
+- Provide ONE final result only.
+- Prefer EXACT form when possible (e.g., 2/3, sqrt(2), pi, 3*sqrt(5)/2).
+- Do NOT round unless the user explicitly requests rounding/decimal approximation.
+- If you must output a decimal (because the prompt requires it), output full precision available from exact conversion, without commentary.
+- If there is a common fraction, do not decompose it into nominator and denominator -> provide x/y style. 
+- Use standard ASCII: "sqrt(2)" not "√2".
+- If there is no valid solution, output {"final_answer": "#no_solution"}.
 
 FORMAT:
 {
@@ -94,7 +105,7 @@ YOU WILL RECEIVE (as JSON in the user message):
 
 GOAL:
 Select the best final answer ONLY from possible_results.
-If no candidate is reliable enough OR quality is insufficient, output "#not_good".
+If no candidate is good enough OR quality is insufficient, output "#not_good".
 
 ABSOLUTE CONSTRAINTS:
 - Output EXACTLY one JSON object with exactly one key: "final_answer".
@@ -180,7 +191,7 @@ def normalize_results(results):
 
     for res in results:
         try:
-            value = float(res["final_answer"])
+            value = res["final_answer"]
             if math.isnan(value) or math.isinf(value):
                 continue
             else:
@@ -230,7 +241,7 @@ def handle_worker(role: str, input: str, max_tokens: int):
         raise RuntimeError("Calculation agent failed to produce valid JSON")
 
 
-def handle_calculations(evaluator: Agent, user_input: str, research: str, max_tokens: int, consol_logs: bool):
+def handle_calculations(evaluator: Agent, user_input: str, research: str, max_tokens: int):
     """Runs calculations with varying temperature"""
     results = []
     possible_answers = ""
@@ -240,25 +251,30 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
     RESEARCH: {research}
     """
     print("START CALCULATIONS")
-    for _ in range(CALCULATION_RUNS):
-        if consol_logs:
-            idx = random.randint(1, len(ROLES_CALCULATOR))
-            role = ROLES_CALCULATOR[idx - 1]
-        else:
-            role = random.choice(ROLES_CALCULATOR)
-        result = handle_worker(role=role, input=start_input, max_tokens=max_tokens)
-        possible_answers += f"\n- {result}"
-        results.append(result)
-        if consol_logs:
-            print(f"single calculation ({idx}): {result}")
 
-    while True:
-        if consol_logs:
+    idx = 0
+    # for _ in range(CALCULATION_RUNS):
+    #     idx = random.randint(0, len(ROLES_CALCULATOR)-1)
+    #     role = ROLES_CALCULATOR[idx]
+    #     result = handle_worker(role=role, input=start_input, max_tokens=max_tokens)
+    #     possible_answers += f"\n- {result}"
+    #     results.append(result)
+    #
+    #     if CONSOLE_LOGS:
+    #         print(f"single calculation ({idx+1}): {result}")
+    possible_answers = """{2775785}\n{35636}\n{3636}"""
+    results = ['2775785', '52/8', '118/2']
+    count_runs = 0
+    output_evaluation = ""
+
+    while count_runs <= CALCULATION_RUNS*3:
+        if CONSOLE_LOGS:
             print("POSSIBLE ANSWERS: ", results)
+
         output_evaluation = handle_evaluation(agent=evaluator, user_input=user_input, research=research,
                                               results=results, temperature=0.05, max_tokens=100)
-        if consol_logs:
-            print(output_evaluation)
+        if CONSOLE_LOGS:
+            print("evaluation: ", output_evaluation)
 
         if output_evaluation != "#not_good":
             break
@@ -267,19 +283,19 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
         full_input = f"""{start_input}
 
         POSSIBLE ANSWERS: {possible_answers}"""
-        if consol_logs:
-            idx = random.randint(1, len(ROLES_CALCULATOR))
-            role = ROLES_CALCULATOR[idx - 1]
-        else:
-            role = random.choice(ROLES_CALCULATOR)
+        idx = random.randint(0, len(ROLES_CALCULATOR)-1)
+        role = ROLES_CALCULATOR[idx]
         result = handle_worker(role=role, input=full_input, max_tokens=max_tokens)
         possible_answers += f"\n- {result}"
         results.append(result)
-        if consol_logs:
-            print(f"single calculation ({idx}): {result}")
 
-    if len(results) < CALCULATION_RUNS // 2 + 1:
-        raise Exception("Too many failed calculations")
+        if CONSOLE_LOGS:
+            print(f"single calculation ({idx+1}): {result}")
+
+        count_runs += 1
+
+    if count_runs >= CALCULATION_RUNS:
+        raise Exception("Could not find reliable answer")
 
     return output_evaluation
 
@@ -294,8 +310,7 @@ def handle_evaluation(agent: Agent, user_input, research: str,results: list, tem
     output = run_agent(agent=agent, input=new_input, temperature=temperature, max_tokens=max_tokens)
 
     try:
-        output = json.loads(output).get("final_answer")
-        return output
+        return json.loads(output).get("final_answer")
     except KeyError:
         raise RuntimeError("Evaluation JSON missing 'final_answer' key")
     except ValueError:
@@ -304,20 +319,19 @@ def handle_evaluation(agent: Agent, user_input, research: str,results: list, tem
 
 def main():
     check_ollama_model(MODEL)
-    consol_logs = False
 
     try:
         agent_researcher = Agent(model=MODEL, role=ROLE_RESEARCHER)
         agent_evaluator = Agent(model=MODEL, role=ROLE_EVALUATOR)
-        user_input = input("> ")
-        # user_input = "Find a rational approximation of π with denominator less than 1,000"
+        # user_input = input("> ")
+        user_input = "Find a rational approximation of π with denominator less than 1,000"
 
         research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.25, max_tokens=2000)
-        if consol_logs:
+        if CONSOLE_LOGS:
             print(research)
 
         results = handle_calculations(evaluator=agent_evaluator, user_input=user_input,
-                                      research=research, max_tokens=150, consol_logs=consol_logs)
+                                      research=research, max_tokens=150)
 
         print("AGENT EVALUATION: ", results)
 
