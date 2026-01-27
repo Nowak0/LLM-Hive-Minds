@@ -10,17 +10,29 @@ CONSOLE_LOGS = True
 ROLE_RESEARCHER = """You are a researcher that gathers insight about given math problem.
 
 TASK:
-Extract ONLY factual, non-calculational knowledge required to solve the problem. 
-Your main goal is to prepare a valuable information, basing it on:
-academic papers, studies, common knowledge, internet, etc.
+Extract ONLY factual, non-calculational knowledge required to solve the problem.
+Your output MUST help downstream agents (calculators + evaluator) by providing:
+1) factual background / methods (theory), AND
+2) explicit, checkable constraints ONLY WHEN they are warranted (implied by the question and by standard definitions).
 
-RULES:
-- Do not perform any calculations.
-- Do not solve the problem.
-- Be specific, be insightful, be thorough.
-- Do not provide any unnecessary text.
-- Do not speculate
-- Output MUST be a valid JSON
+ABSOLUTE RULES:
+- Do NOT perform any calculations.
+- Do NOT solve the problem.
+- Do NOT approximate any numeric answer for the specific input.
+- Do NOT select among candidate answers.
+- Do NOT speculate. If something is not explicitly implied, omit it.
+- Output MUST be valid JSON only (no markdown, no commentary).
+
+GUIDANCE:
+- Always parse constraints directly from the question text (e.g., "denominator less than 1,000" => max_denominator_exclusive = 1000).
+- If the question uses terms with standard definitions that imply constraints, include them:
+Examples:
+- "rational approximation" => answer should be a rational number, typically representable as p/q with integers and q>0.
+- "completely reduced fraction" or "Farey sequence fractions" => gcd(p,q)=1 (must_be_reduced = true).
+- "to N decimal places" => decimals_required = N.
+- If the problem involves a well-known constant with universally known bounds that do not require solving, include them in bounds_from_definitions:
+Example: for π, include "3 < π < 4".
+- Do NOT include any numeric candidate evaluation (no 'this fraction is best').
 """
 ROLE_CALCULATOR_BASE = """You are a math specialist that calculates equations. 
 
@@ -243,8 +255,8 @@ def handle_worker(role: str, input: str, max_tokens: int):
 
 def handle_calculations(evaluator: Agent, user_input: str, research: str, max_tokens: int):
     """Runs calculations with varying temperature"""
-    results = []
     possible_answers = ""
+    output_evaluation = ""
     start_input = f"""
     QUESTION: {user_input}
 
@@ -252,27 +264,23 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
     """
     print("START CALCULATIONS")
 
-    idx = 0
-    # for _ in range(CALCULATION_RUNS):
-    #     idx = random.randint(0, len(ROLES_CALCULATOR)-1)
-    #     role = ROLES_CALCULATOR[idx]
-    #     result = handle_worker(role=role, input=start_input, max_tokens=max_tokens)
-    #     possible_answers += f"\n- {result}"
-    #     results.append(result)
-    #
-    #     if CONSOLE_LOGS:
-    #         print(f"single calculation ({idx+1}): {result}")
-    possible_answers = """{2775785}\n{35636}\n{3636}"""
-    results = ['2775785', '52/8', '118/2']
+    for _ in range(CALCULATION_RUNS):
+        idx = random.randint(0, len(ROLES_CALCULATOR)-1)
+        role = ROLES_CALCULATOR[idx]
+        result = handle_worker(role=role, input=start_input, max_tokens=max_tokens)
+        possible_answers += f"\n- {result}"
+
+        if CONSOLE_LOGS:
+            print(f"single calculation ({idx+1}): {result}")
+    # possible_answers = """{2775785}\n{35636}\n{3636}"""
     count_runs = 0
-    output_evaluation = ""
 
     while count_runs <= CALCULATION_RUNS*3:
         if CONSOLE_LOGS:
-            print("POSSIBLE ANSWERS: ", results)
+            print("POSSIBLE ANSWERS: ", possible_answers)
 
         output_evaluation = handle_evaluation(agent=evaluator, user_input=user_input, research=research,
-                                              results=results, temperature=0.05, max_tokens=100)
+                                              results=possible_answers, temperature=0.05, max_tokens=100)
         if CONSOLE_LOGS:
             print("evaluation: ", output_evaluation)
 
@@ -287,7 +295,6 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
         role = ROLES_CALCULATOR[idx]
         result = handle_worker(role=role, input=full_input, max_tokens=max_tokens)
         possible_answers += f"\n- {result}"
-        results.append(result)
 
         if CONSOLE_LOGS:
             print(f"single calculation ({idx+1}): {result}")
@@ -300,7 +307,7 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
     return output_evaluation
 
 
-def handle_evaluation(agent: Agent, user_input, research: str,results: list, temperature: float, max_tokens: int):
+def handle_evaluation(agent: Agent, user_input, research: str, results: str, temperature: float, max_tokens: int):
     """Adds possible results to user's query and evaluates them"""
     new_input = json.dumps({
         "question": user_input,
