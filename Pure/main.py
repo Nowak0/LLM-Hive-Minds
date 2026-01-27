@@ -87,41 +87,91 @@ FORMAT:
 ROLES_CALCULATOR = [ROLE_CALCULATOR_BASE, ROLE_CALCULATOR_ALGEBRA,ROLE_CALCULATOR_STEPWISE]
 ROLE_EVALUATOR = """You are a STRICT result selector for a math task.
 
-You will receive:
-- a list/array called possible_results containing candidate final answers (strings or numbers).
-- optionally: the original question/expression (may be present, may be absent).
+YOU WILL RECEIVE (as JSON in the user message):
+- question: the original user question/expression
+- research: factual, non-calculational insights relevant to the problem (may include constraints, domains, definitions, typical pitfalls)
+- possible_results: an array of candidate final answers (strings or numbers)
 
 GOAL:
 Select the best final answer ONLY from possible_results.
-If no candidate is reliable enough, output "#not_good".
+If no candidate is reliable enough OR quality is insufficient, output "#not_good".
 
 ABSOLUTE CONSTRAINTS:
-- You MUST output exactly one JSON object with one key: "final_answer".
+- Output EXACTLY one JSON object with exactly one key: "final_answer".
 - "final_answer" MUST be either:
-  (a) one element copied from possible_results (exactly as it appears), or
+  (a) one element copied from possible_results EXACTLY as it appears, or
   (b) the string "#not_good".
 - Do NOT include any other keys, text, markdown, or explanations.
 - Do NOT invent a new answer.
-- Do NOT “improve” formatting or rounding of the chosen value.
+- Do NOT “improve” formatting, rounding, precision, or rewrite the chosen value.
 
-SELECTION POLICY:
-1) Filter invalid/empty candidates (empty string, None-like, NaN-like). If everything is invalid -> "#not_good".
-2) Group candidates into “equivalence clusters” using the normalization rules above.
-3) Prefer the cluster with the largest support (most candidates that agree).
-4) If there is a tie for largest support -> "#not_good".
-5) Reliability gate:
-   - If the largest cluster has support < 2 AND there is noticeable disagreement (multiple distinct clusters), output "#not_good".
-   - If the candidates are all over the place (no clear cluster), output "#not_good".
-   - If possible_results contains only one candidate, return it ONLY if it looks like a valid final answer; otherwise "#not_good".
+CRITICAL PRINCIPLE:
+Research is factual context. Use it to validate or invalidate candidates, NOT to compute a new answer.
+
+SELECTION POLICY (STRICT ORDER):
+
+0) Input hygiene:
+   - Remove invalid candidates (empty string, null-like, NaN-like, non-scalar JSON objects/arrays).
+   - If none remain -> "#not_good".
+
+1) Extract explicit requirements from question/research (NO CALCULATION):
+   If question/research explicitly requests any of the following, treat it as a requirement:
+   - Precision requirement (examples):
+     * "to 5 decimal places" / "5 digits after the decimal"
+     * "rounded to N decimals"
+     * significant figures
+   - Format requirement:
+     * must be an integer, fraction, simplified fraction, etc.
+   - Domain requirement:
+     * must be positive/real/in [a,b], etc.
+
+2) Research/question hard constraint filtering (only when explicit and unambiguous):
+   - Eliminate any candidate that clearly violates explicit constraints from question/research (domain, impossibility, format).
+   - If all eliminated -> "#not_good".
+
+3) Quality / satisfiability gate (soft-but-actionable):
+   This gate is about whether a candidate is "good enough" for what the user asked, without recomputing.
+   - If an explicit precision requirement exists:
+     * Determine required decimals N (or significant figures) from question/research.
+     * For each candidate, check if it satisfies the requirement by INSPECTION ONLY:
+       - If candidate is a decimal string/number: count digits after '.' (or after ',' if used).
+       - If candidate is in exact symbolic form (e.g., "pi", "22/7", "sqrt(2)"):
+         - It does NOT satisfy a "N decimals" requirement unless the question explicitly allows exact forms instead of decimals.
+     * If NO candidate satisfies the explicit precision requirement -> output "#not_good".
+       (This is allowed and recommended to trigger recomputation with proper precision.)
+   - If there is no explicit precision/format requirement, do not apply this gate.
+
+4) Equivalence clustering:
+   - Normalize candidates for comparison WITHOUT changing final output:
+     * trim whitespace
+     * treat numeric strings and numbers as comparable
+     * cluster obvious near-equals (e.g., "42", "42.0", "41.999999999") within tiny tolerance
+     * cluster obvious fraction/decimal equivalences when trivial (e.g., "0.5" vs "1/2")
+   - Group into equivalence clusters.
+
+5) Choose by support with research-aware tie-breaking:
+   - Prefer the cluster with the largest support (most candidates that agree).
+   - If tie:
+     * If an explicit constraint (domain/format/precision) selects exactly one tied cluster, choose that one.
+     * Otherwise -> "#not_good".
+
+6) Final reliability gate:
+   - If multiple distinct clusters remain and top cluster support < 2 -> "#not_good".
+   - If results are scattered with no clear cluster -> "#not_good".
+   - If only one valid candidate remains:
+     * return it only if it meets explicit constraints and (if present) the precision requirement; else "#not_good".
 
 OUTPUT FORMAT (exactly):
 {
   "final_answer": "<one of possible_results or #not_good>"
 }
 
-EXAMPLES:
-If possible_results = ["42", "42.0", "41.999999999"] -> choose "42" (or the earliest in that top cluster).
-If possible_results = ["10", "12", "9.5", "11"] -> "#not_good".
+EXAMPLE (precision):
+question: "Approximate pi to 5 decimal places"
+possible_results: ["3.14", "3.14159", "pi"]
+-> choose "3.14159"
+If possible_results: ["3.14", "pi"]
+-> "#not_good"
 """
 
 
@@ -180,7 +230,7 @@ def handle_worker(role: str, input: str, max_tokens: int):
         raise RuntimeError("Calculation agent failed to produce valid JSON")
 
 
-def handle_calculations(evaluator: Agent, user_input: str, research: str, max_tokens: int):
+def handle_calculations(evaluator: Agent, user_input: str, research: str, max_tokens: int, consol_logs: bool):
     """Runs calculations with varying temperature"""
     results = []
     possible_answers = ""
@@ -191,21 +241,25 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
     """
     print("START CALCULATIONS")
     for _ in range(CALCULATION_RUNS):
-        # role = random.choice(ROLES_CALCULATOR)
-        idx = random.randint(1, len(ROLES_CALCULATOR))
-        role = ROLES_CALCULATOR[idx - 1]
+        if consol_logs:
+            idx = random.randint(1, len(ROLES_CALCULATOR))
+            role = ROLES_CALCULATOR[idx - 1]
+        else:
+            role = random.choice(ROLES_CALCULATOR)
         result = handle_worker(role=role, input=start_input, max_tokens=max_tokens)
         possible_answers += f"\n- {result}"
         results.append(result)
-        print(f"single calculation ({idx}): {result}")
-
-    # results = normalize_results(results)
+        if consol_logs:
+            print(f"single calculation ({idx}): {result}")
 
     while True:
-        print("POSSIBLE ANSWERS: ", results)
+        if consol_logs:
+            print("POSSIBLE ANSWERS: ", results)
         output_evaluation = handle_evaluation(agent=evaluator, user_input=user_input, research=research,
                                               results=results, temperature=0.05, max_tokens=100)
-        print(output_evaluation)
+        if consol_logs:
+            print(output_evaluation)
+
         if output_evaluation != "#not_good":
             break
         else:
@@ -213,11 +267,16 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
         full_input = f"""{start_input}
 
         POSSIBLE ANSWERS: {possible_answers}"""
-        role = random.choice(ROLES_CALCULATOR)
+        if consol_logs:
+            idx = random.randint(1, len(ROLES_CALCULATOR))
+            role = ROLES_CALCULATOR[idx - 1]
+        else:
+            role = random.choice(ROLES_CALCULATOR)
         result = handle_worker(role=role, input=full_input, max_tokens=max_tokens)
         possible_answers += f"\n- {result}"
         results.append(result)
-        print(f"single calculation ({role}): {result}")
+        if consol_logs:
+            print(f"single calculation ({idx}): {result}")
 
     if len(results) < CALCULATION_RUNS // 2 + 1:
         raise Exception("Too many failed calculations")
@@ -236,7 +295,6 @@ def handle_evaluation(agent: Agent, user_input, research: str,results: list, tem
 
     try:
         output = json.loads(output).get("final_answer")
-        # return normalize_results([output])
         return output
     except KeyError:
         raise RuntimeError("Evaluation JSON missing 'final_answer' key")
@@ -246,18 +304,20 @@ def handle_evaluation(agent: Agent, user_input, research: str,results: list, tem
 
 def main():
     check_ollama_model(MODEL)
+    consol_logs = False
 
     try:
         agent_researcher = Agent(model=MODEL, role=ROLE_RESEARCHER)
         agent_evaluator = Agent(model=MODEL, role=ROLE_EVALUATOR)
-        # user_input = input("> ")
-        user_input = "Find a rational approximation of π with denominator less than 1,000"
+        user_input = input("> ")
+        # user_input = "Find a rational approximation of π with denominator less than 1,000"
 
         research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.25, max_tokens=2000)
-        print(research)
+        if consol_logs:
+            print(research)
 
         results = handle_calculations(evaluator=agent_evaluator, user_input=user_input,
-                                      research=research, max_tokens=150)
+                                      research=research, max_tokens=150, consol_logs=consol_logs)
 
         print("AGENT EVALUATION: ", results)
 
