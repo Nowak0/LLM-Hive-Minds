@@ -10,7 +10,8 @@ CONSOLE_LOGS = True
 ROLE_RESEARCHER = """You are a researcher that gathers insight about given math problem.
 
 TASK:
-Extract ONLY factual, non-calculational knowledge required to solve the problem.
+Provide (A) theory/method notes and (B) optional checkable constraints that help downstream agents.
+You must NOT compute the specific solution. 
 Your output MUST help downstream agents (calculators + evaluator) by providing:
 1) factual background / methods (theory), AND
 2) explicit, checkable constraints ONLY WHEN they are warranted (implied by the question and by standard definitions).
@@ -18,21 +19,25 @@ Your output MUST help downstream agents (calculators + evaluator) by providing:
 ABSOLUTE RULES:
 - Do NOT perform any calculations.
 - Do NOT solve the problem.
-- Do NOT approximate any numeric answer for the specific input.
+- Do NOT approximate any numeric answer for the specific instance.
 - Do NOT select among candidate answers.
-- Do NOT speculate. If something is not explicitly implied, omit it.
-- Output MUST be valid JSON only (no markdown, no commentary).
+- Do NOT speculate or add heuristics.
+- Output MUST be valid JSON only (no markdown, no extra text).
 
-GUIDANCE:
-- Always parse constraints directly from the question text (e.g., "denominator less than 1,000" => max_denominator_exclusive = 1000).
-- If the question uses terms with standard definitions that imply constraints, include them:
-Examples:
-- "rational approximation" => answer should be a rational number, typically representable as p/q with integers and q>0.
-- "completely reduced fraction" or "Farey sequence fractions" => gcd(p,q)=1 (must_be_reduced = true).
-- "to N decimal places" => decimals_required = N.
-- If the problem involves a well-known constant with universally known bounds that do not require solving, include them in bounds_from_definitions:
-Example: for π, include "3 < π < 4".
-- Do NOT include any numeric candidate evaluation (no 'this fraction is best').
+CONSTRAINT POLICY (VERY IMPORTANT):
+- It is OK to output mostly null/empty constraints.
+- You may fill a constraint ONLY if:
+  (1) it is explicitly stated in the question, OR
+  (2) it is a direct consequence of a standard definition that you explicitly wrote in theory_notes/methods.
+- If you set ANY constraint field to a non-null value, add a corresponding entry to constraint_sources.
+
+QUALITY REQUIREMENT:
+- theory_notes MUST contain at least 3 items.
+- methods MUST contain at least 1 item when the problem is non-trivial.
+- constraints.validity_checks_for_evaluator should be present even if empty ([]).
+
+REMINDER:
+No numeric evaluation of candidates. No choosing “best fraction”. No computing convergents.
 """
 ROLE_CALCULATOR_BASE = """You are a math specialist that calculates equations. 
 
@@ -178,7 +183,12 @@ SELECTION POLICY (STRICT ORDER):
      * If an explicit constraint (domain/format/precision) selects exactly one tied cluster, choose that one.
      * Otherwise -> "#not_good".
 
-6) Final reliability gate:
+6) Final reliability gate + research-consistency gate:
+
+   - Research-consistency requirement:
+     * If research contains ANY explicit, checkable constraints or validity checks (e.g., denominator limit, required form p/q, reduced fraction requirement, stated bounds/range),
+       then at least one candidate MUST satisfy them.
+     * If ZERO candidates satisfy the explicit research constraints/checks -> output "#not_good".
    - If multiple distinct clusters remain and top cluster support < 2 -> "#not_good".
    - If results are scattered with no clear cluster -> "#not_good".
    - If only one valid candidate remains:
@@ -264,15 +274,15 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
     """
     print("START CALCULATIONS")
 
-    for _ in range(CALCULATION_RUNS):
-        idx = random.randint(0, len(ROLES_CALCULATOR)-1)
-        role = ROLES_CALCULATOR[idx]
-        result = handle_worker(role=role, input=start_input, max_tokens=max_tokens)
-        possible_answers += f"\n- {result}"
-
-        if CONSOLE_LOGS:
-            print(f"single calculation ({idx+1}): {result}")
-    # possible_answers = """{2775785}\n{35636}\n{3636}"""
+    # for _ in range(CALCULATION_RUNS):
+    #     idx = random.randint(0, len(ROLES_CALCULATOR)-1)
+    #     role = ROLES_CALCULATOR[idx]
+    #     result = handle_worker(role=role, input=start_input, max_tokens=max_tokens)
+    #     possible_answers += f"\n- {result}"
+    #
+    #     if CONSOLE_LOGS:
+    #         print(f"single calculation ({idx+1}): {result}")
+    possible_answers = """\n- 2/5\n- 28/6\n- 3.2"""
     count_runs = 0
 
     while count_runs <= CALCULATION_RUNS*3:
@@ -309,11 +319,14 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
 
 def handle_evaluation(agent: Agent, user_input, research: str, results: str, temperature: float, max_tokens: int):
     """Adds possible results to user's query and evaluates them"""
-    new_input = json.dumps({
-        "question": user_input,
-        "research": research,
-        "possible_results": results
-    }, indent=2)
+    new_input = f"""
+    QUESTION: {user_input}
+
+    RESEARCH: {research}
+    
+    POSSIBLE ANSWERS: {results}
+    """
+
     output = run_agent(agent=agent, input=new_input, temperature=temperature, max_tokens=max_tokens)
 
     try:
