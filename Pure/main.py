@@ -5,7 +5,7 @@ from Pure.Agent import Agent, check_ollama_model, quit_ollama
 
 CALCULATION_RUNS = 3
 MODEL = "llama3.1:8b"
-CONSOLE_LOGS = True
+CONSOLE_LOGS = False
 
 ROLE_RESEARCHER = """You are a researcher that gathers insight about given math problem.
 
@@ -218,7 +218,6 @@ def normalize_results(results):
                 continue
             else:
                 normalized_results.append(value)
-            # normalized_results.append(value)
         except Exception as e:
             print("Could not normalize calculated result:", e)
             continue
@@ -253,7 +252,7 @@ def handle_research(agent: Agent, user_input, temperature: float, max_tokens: in
         raise RuntimeError("Research agent failed to produce valid JSON")
 
 
-def handle_worker(role: str, input: str, max_tokens: int):
+def run_worker(role: str, input: str, max_tokens: int):
     agent = Agent(model=MODEL, role=role)
     result = run_agent(agent=agent, input=input, temperature=random.uniform(0.03, 0.1), max_tokens=max_tokens)
 
@@ -263,34 +262,41 @@ def handle_worker(role: str, input: str, max_tokens: int):
         raise RuntimeError("Calculation agent failed to produce valid JSON")
 
 
+def handle_worker(start_input: str, possible_results: str, max_tokens: int, number_of_runs: int):
+    for _ in range(number_of_runs):
+        idx = random.randint(0, len(ROLES_CALCULATOR)-1)
+        role = ROLES_CALCULATOR[idx]
+        result = run_worker(role=role, input=start_input, max_tokens=max_tokens)
+        possible_results += f"\n- {result}"
+
+        if CONSOLE_LOGS:
+            print(f"single calculation ({idx+1}): {result}")
+
+    return possible_results
+
+
 def handle_calculations(evaluator: Agent, user_input: str, research: str, max_tokens: int):
     """Runs calculations with varying temperature"""
-    possible_answers = ""
+    possible_results = ""
     output_evaluation = ""
     start_input = f"""
     QUESTION: {user_input}
 
     RESEARCH: {research}
     """
-    print("START CALCULATIONS")
+    if CONSOLE_LOGS:
+        print("START CALCULATIONS")
 
-    # for _ in range(CALCULATION_RUNS):
-    #     idx = random.randint(0, len(ROLES_CALCULATOR)-1)
-    #     role = ROLES_CALCULATOR[idx]
-    #     result = handle_worker(role=role, input=start_input, max_tokens=max_tokens)
-    #     possible_answers += f"\n- {result}"
-    #
-    #     if CONSOLE_LOGS:
-    #         print(f"single calculation ({idx+1}): {result}")
-    possible_answers = """\n- 2/5\n- 28/6\n- 3.2"""
+    possible_results = handle_worker(start_input=start_input, possible_results=possible_results,
+                                     max_tokens=max_tokens, number_of_runs=CALCULATION_RUNS)
     count_runs = 0
 
     while count_runs <= CALCULATION_RUNS*3:
         if CONSOLE_LOGS:
-            print("POSSIBLE ANSWERS: ", possible_answers)
+            print("POSSIBLE ANSWERS: ", possible_results)
 
         output_evaluation = handle_evaluation(agent=evaluator, user_input=user_input, research=research,
-                                              results=possible_answers, temperature=0.05, max_tokens=100)
+                                              results=possible_results, temperature=0.05, max_tokens=100)
         if CONSOLE_LOGS:
             print("evaluation: ", output_evaluation)
 
@@ -298,17 +304,12 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
             break
         else:
             print(f"Answers not good enough")
+
         full_input = f"""{start_input}
 
-        POSSIBLE ANSWERS: {possible_answers}"""
-        idx = random.randint(0, len(ROLES_CALCULATOR)-1)
-        role = ROLES_CALCULATOR[idx]
-        result = handle_worker(role=role, input=full_input, max_tokens=max_tokens)
-        possible_answers += f"\n- {result}"
-
-        if CONSOLE_LOGS:
-            print(f"single calculation ({idx+1}): {result}")
-
+        POSSIBLE ANSWERS: {possible_results}"""
+        possible_results = handle_worker(start_input=full_input, possible_results=possible_results,
+                                         max_tokens=max_tokens, number_of_runs=1)
         count_runs += 1
 
     if count_runs >= CALCULATION_RUNS:
@@ -343,8 +344,7 @@ def main():
     try:
         agent_researcher = Agent(model=MODEL, role=ROLE_RESEARCHER)
         agent_evaluator = Agent(model=MODEL, role=ROLE_EVALUATOR)
-        # user_input = input("> ")
-        user_input = "Find a rational approximation of π with denominator less than 1,000"
+        user_input = input("> ")
 
         research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.25, max_tokens=2000)
         if CONSOLE_LOGS:
