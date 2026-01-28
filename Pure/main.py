@@ -312,7 +312,7 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
                                          max_tokens=max_tokens, number_of_runs=1)
         count_runs += 1
 
-    if count_runs >= CALCULATION_RUNS:
+    if count_runs >= CALCULATION_RUNS*3:
         raise Exception("Could not find reliable answer")
 
     return output_evaluation
