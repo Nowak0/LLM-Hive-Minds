@@ -5,7 +5,7 @@ from Pure.Agent import Agent, check_ollama_model, quit_ollama
 
 CALCULATION_RUNS = 3
 MODEL = "llama3.1:8b"
-CONSOLE_LOGS = False
+CONSOLE_LOGS = True
 
 ROLE_RESEARCHER = """You are a researcher that gathers insight about given math problem.
 
@@ -289,6 +289,7 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
 
     possible_results = handle_worker(start_input=start_input, possible_results=possible_results,
                                      max_tokens=max_tokens, number_of_runs=CALCULATION_RUNS)
+
     count_runs = 0
 
     while count_runs <= CALCULATION_RUNS*3:
@@ -302,7 +303,7 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
 
         if output_evaluation != "#not_good":
             break
-        else:
+        elif CONSOLE_LOGS :
             print(f"Answers not good enough")
 
         full_input = f"""{start_input}
