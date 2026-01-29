@@ -346,7 +346,6 @@ def main():
         agent_researcher = Agent(model=MODEL, role=ROLE_RESEARCHER)
         agent_evaluator = Agent(model=MODEL, role=ROLE_EVALUATOR)
         user_input = input("> ")
-
         research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.25, max_tokens=2000)
         if CONSOLE_LOGS:
             print(research)
