@@ -1,7 +1,6 @@
 import subprocess
 import requests
 
-
 OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 
 
@@ -36,14 +35,12 @@ class Agent():
         self.model = model
         self.role = role
 
-
     def build_chat_prompt(self, user_input):
         """Build a chat prompt"""
         return [
             {"role": "system", "content": self.role},
             {"role": "user", "content": user_input}
         ]
-
 
     def ollama_chat(self, prompt: list[dict], temperature: float = 0.7, max_tokens: int = 2000):
         """Get a response from Ollama /api/chat"""
@@ -53,6 +50,7 @@ class Agent():
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
+                "no_cache": True,
             },
             "stream": False,
             "format": "json"
