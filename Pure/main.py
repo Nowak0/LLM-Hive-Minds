@@ -45,8 +45,8 @@ TASK:
 Compute the final numeric/symbolic result for the given expression/problem.
 
 OUTPUT (STRICT):
-- Return EXACTLY one JSON object with exactly one key (checkout OUTPUT FORMAT): "final_answer".!!
-- Do NOT output any extra keys, text, markdown, or whitespace outside JSON.
+- Show your step-by-step work in the "thought" field.
+- Provide the final exact result in the "final_answer" field without any reasoning.
 
 FINAL_ANSWER RULES:
 - Provide ONE final result only.
@@ -59,6 +59,7 @@ FINAL_ANSWER RULES:
 
 OUTPUT FORMAT:
 {
+    "thought": "Your step-by-step reasoning here...",
     "final_answer": result
 }
 """
@@ -70,8 +71,8 @@ METHOD:
 3) Only at the end produce the final exact result.
 
 OUTPUT (STRICT):
-- Return EXACTLY one JSON object with exactly one key (checkout OUTPUT FORMAT): "final_answer".!!
-- Do NOT output any extra keys, text, markdown, or whitespace outside JSON.
+- Show your step-by-step work in the "thought" field.
+- Provide the final exact result in the "final_answer" field.
 
 FINAL_ANSWER RULES:
 - Provide ONE final result only.
@@ -84,6 +85,7 @@ FINAL_ANSWER RULES:
 
 FORMAT:
 {
+    "thought": "Your step-by-step reasoning here...",
     "final_answer": result
 }
 """
@@ -95,8 +97,8 @@ METHOD:
 3) Perform cancellation and gcd reductions frequently to avoid overflow/mistakes.
 
 OUTPUT (STRICT):
-- Return EXACTLY one JSON object with exactly one key (checkout OUTPUT FORMAT): "final_answer".!!
-- Do NOT output any extra keys, text, markdown, or whitespace outside JSON.
+- Show your step-by-step work in the "thought" field.
+- Provide the final exact result in the "final_answer" field.
 
 FINAL_ANSWER RULES:
 - Provide ONE final result only.
@@ -109,6 +111,7 @@ FINAL_ANSWER RULES:
 
 FORMAT:
 {
+    "thought": "Your step-by-step reasoning here...",
     "final_answer": result
 }
 """
@@ -129,70 +132,18 @@ ABSOLUTE CONSTRAINTS:
 - "final_answer" MUST be either:
   (a) one element copied from possible_results EXACTLY as it appears, or
   (b) the string "#not_good".
-- Do NOT include any other keys, text, markdown, or explanations.
-- Do NOT invent a new answer.
-- Do NOT “improve” formatting, rounding, precision, or rewrite the chosen value.
+- Do not explain, do not calculate and do not fix formatting
 
-CRITICAL PRINCIPLE:
-Research is factual context. Use it to validate or invalidate candidates, NOT to compute a new answer.
 
 SELECTION POLICY (STRICT ORDER):
 
-0) Input hygiene:
-   - Remove invalid candidates (empty string, null-like, NaN-like, non-scalar JSON objects/arrays).
-   - If none remain -> "#not_good".
-
-1) Extract explicit requirements from question/research (NO CALCULATION):
-   If question/research explicitly requests any of the following, treat it as a requirement:
-   - Precision requirement (examples):
-     * "to 5 decimal places" / "5 digits after the decimal"
-     * "rounded to N decimals"
-     * significant figures
-   - Format requirement:
-     * must be an integer, fraction, simplified fraction, etc.
-   - Domain requirement:
-     * must be positive/real/in [a,b], etc.
-
-2) Research/question hard constraint filtering (only when explicit and unambiguous):
-   - Eliminate any candidate that clearly violates explicit constraints from question/research (domain, impossibility, format).
-   - If all eliminated -> "#not_good".
-
-3) Quality / satisfiability gate (soft-but-actionable):
-   This gate is about whether a candidate is "good enough" for what the user asked, without recomputing.
-   - If an explicit precision requirement exists:
-     * Determine required decimals N (or significant figures) from question/research.
-     * For each candidate, check if it satisfies the requirement by INSPECTION ONLY:
-       - If candidate is a decimal string/number: count digits after '.' (or after ',' if used).
-       - If candidate is in exact symbolic form (e.g., "pi", "22/7", "sqrt(2)"):
-         - It does NOT satisfy a "N decimals" requirement unless the question explicitly allows exact forms instead of decimals.
-     * If NO candidate satisfies the explicit precision requirement -> output "#not_good".
-       (This is allowed and recommended to trigger recomputation with proper precision.)
-   - If there is no explicit precision/format requirement, do not apply this gate.
-
-4) Equivalence clustering:
-   - Normalize candidates for comparison WITHOUT changing final output:
-     * trim whitespace
-     * treat numeric strings and numbers as comparable
-     * cluster obvious near-equals (e.g., "42", "42.0", "41.999999999") within tiny tolerance
-     * cluster obvious fraction/decimal equivalences when trivial (e.g., "0.5" vs "1/2")
-   - Group into equivalence clusters.
-
-5) Choose by support with research-aware tie-breaking:
-   - Prefer the cluster with the largest support (most candidates that agree).
-   - If tie:
-     * If an explicit constraint (domain/format/precision) selects exactly one tied cluster, choose that one.
-     * Otherwise -> "#not_good".
-
-6) Final reliability gate + research-consistency gate:
-
-   - Research-consistency requirement:
-     * If research contains ANY explicit, checkable constraints or validity checks (e.g., denominator limit, required form p/q, reduced fraction requirement, stated bounds/range),
-       then at least one candidate MUST satisfy them.
-     * If ZERO candidates satisfy the explicit research constraints/checks -> output "#not_good".
-   - If multiple distinct clusters remain and top cluster support < 2 -> "#not_good".
-   - If results are scattered with no clear cluster -> "#not_good".
-   - If only one valid candidate remains:
-     * return it only if it meets explicit constraints and (if present) the precision requirement; else "#not_good".
+1) Filter: Remove invalid/null entries. Discard candidates violating 'research' (domain, precision, format).
+2) Cluster: Group equivalent values (e.g., "0.5", "1/2", "0.50").
+3) Evaluate: 
+   - If a specific precision (e.g., "5 decimals") is required and no candidate meets it -> "#not_good".
+   - If no precision specified prefer fractions
+   - Pick the cluster with the most support.
+   - If there is a tie or no clear majority (support < 2) and the problem is non-trivial -> "#not_good".
 
 OUTPUT FORMAT (exactly):
 {
@@ -257,7 +208,10 @@ def run_worker(role: str, input: str, max_tokens: int):
     result = run_agent(agent=agent, input=input, temperature=random.uniform(0.03, 0.1), max_tokens=max_tokens)
 
     try:
-        return json.loads(result).get("final_answer")
+        data = json.loads(result)
+        if CONSOLE_LOGS:
+            print(f"Worker thought:\n{data.get('thought')}\n")
+        return data.get("final_answer")
     except json.decoder.JSONDecodeError:
         raise RuntimeError("Calculation agent failed to produce valid JSON")
 
@@ -351,7 +305,7 @@ def main():
             print(research)
 
         results = handle_calculations(evaluator=agent_evaluator, user_input=user_input,
-                                      research=research, max_tokens=150)
+                                      research=research, max_tokens=1000)
 
         print("AGENT EVALUATION: ", results)
 
