@@ -1,5 +1,7 @@
 # Organizacja i infrastruktura projektu
 
+### Jakub Nowak 197860, Oliwier Komorowski 197808
+
 ## 1. Opis projektu i produktu
 *   **Nazwa projektu:** System przetwarzania danych oparty na pojedynczym oraz współpracujących modelach LLM
 *   **Adresowany problem:** Badanie efektywności kolektywnego działania agentów LLM ("Hive Mind") w porównaniu do wydajności pojedynczego modelu w rozwiązywaniu złożonych problemów matematycznych i logicznych.
@@ -23,7 +25,9 @@
 *   **Użytkownicy końcowi:** Osoby potrzebujące wysokiej precyzji w obliczeniach symbolicznych i numerycznych wykonywanych przez LLM.
 
 ## 3. Zespół
-*   **Skład zespołu:** Jakub Nowak 197860, Oliwier Komorowski 197808.
+*   **Skład zespołu:** 
+    * Jakub Nowak
+    * Oliwier Komorowski
 *   **Podział ról:**
     *   Zadania przydzielane są dynamicznie w zależności od potrzeb projektu.
     *   Dwaj programiści.
