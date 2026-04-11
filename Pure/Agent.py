@@ -1,5 +1,6 @@
 import subprocess
 import requests
+import aiohttp
 
 OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 OLLAMA_TIMEOUT = 120
@@ -43,7 +44,7 @@ class Agent():
             {"role": "user", "content": user_input}
         ]
 
-    def ollama_chat(self, prompt: list[dict], temperature: float = 0.7, max_tokens: int = 2000):
+    async def ollama_chat(self, prompt: list[dict], temperature: float = 0.7, max_tokens: int = 2000):
         """Get a response from Ollama /api/chat"""
         package = {
             "model": self.model,
@@ -57,6 +58,8 @@ class Agent():
             "format": "json"
         }
 
-        response = requests.post(OLLAMA_CHAT_URL, json=package, timeout=OLLAMA_TIMEOUT)
-        response.raise_for_status()
-        return response.json()["message"]["content"]
+        async with aiohttp.ClientSession() as session:
+            async with session.post(OLLAMA_CHAT_URL, json=package) as response:
+                response.raise_for_status()
+                data = await response.json()
+                return data["message"]["content"]
