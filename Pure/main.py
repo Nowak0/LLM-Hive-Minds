@@ -1,6 +1,10 @@
 import random
 import json
 import math
+import asyncio
+import time
+from datetime import datetime
+
 from Pure.Agent import Agent, check_ollama_model, quit_ollama
 
 CALCULATION_RUNS = 3
@@ -179,23 +183,23 @@ def normalize_results(results):
         return normalized_results
 
 
-def run_agent(agent: Agent, input: str, temperature: float = None, max_tokens: int = None):
+async def run_agent(agent: Agent, input: str, temperature: float = None, max_tokens: int = None):
     """Build a proper prompt for given agent and runs a chat with it"""
     prompt = agent.build_chat_prompt(input)
 
     if temperature is not None and max_tokens is not None:
-        return agent.ollama_chat(prompt=prompt, temperature=temperature, max_tokens=max_tokens)
+        return await agent.ollama_chat(prompt=prompt, temperature=temperature, max_tokens=max_tokens)
     elif temperature is not None:
-        return agent.ollama_chat(prompt=prompt, temperature=temperature)
+        return await agent.ollama_chat(prompt=prompt, temperature=temperature)
     elif max_tokens is not None:
-        return agent.ollama_chat(prompt=prompt, max_tokens=max_tokens)
+        return await agent.ollama_chat(prompt=prompt, max_tokens=max_tokens)
     else:
-        return agent.ollama_chat(prompt=prompt)
+        return await agent.ollama_chat(prompt=prompt)
 
 
-def handle_research(agent: Agent, user_input, temperature: float, max_tokens: int):
+async def handle_research(agent: Agent, user_input, temperature: float, max_tokens: int):
     """Gathers insight from researcher and injects it into user's query"""
-    raw_insight = run_agent(agent=agent, input=user_input, temperature=temperature, max_tokens=max_tokens)
+    raw_insight = await run_agent(agent=agent, input=user_input, temperature=temperature, max_tokens=max_tokens)
 
     try:
         return json.loads(raw_insight)
@@ -203,9 +207,14 @@ def handle_research(agent: Agent, user_input, temperature: float, max_tokens: in
         raise RuntimeError("Research agent failed to produce valid JSON")
 
 
-def run_worker(role: str, input: str, max_tokens: int):
+async def run_worker(role: str, input: str, max_tokens: int):
+    #start = datetime.now()
+    #print(f"[START] {role[9:27]}... at {start.strftime('%H:%M:%S')}")
     agent = Agent(model=MODEL, role=role)
-    result = run_agent(agent=agent, input=input, temperature=random.uniform(0.03, 0.1), max_tokens=max_tokens)
+    result = await run_agent(agent=agent, input=input, temperature=random.uniform(0.03, 0.1), max_tokens=max_tokens)
+
+    #end = datetime.now()
+    #print(f"[END] {role[9:27]}... at {start.strftime('%H:%M:%S')} (duration {(end - start).total_seconds():.2f}s)")
 
     try:
         data = json.loads(result)
@@ -216,22 +225,24 @@ def run_worker(role: str, input: str, max_tokens: int):
         raise RuntimeError("Calculation agent failed to produce valid JSON")
 
 
-def handle_worker(start_input: str, possible_results: str, max_tokens: int, number_of_runs: int):
+async def handle_worker(start_input: str, max_tokens: int, number_of_runs: int):
+    tasks = []
     for _ in range(number_of_runs):
         idx = random.randint(0, len(ROLES_CALCULATOR)-1)
         role = ROLES_CALCULATOR[idx]
-        result = run_worker(role=role, input=start_input, max_tokens=max_tokens)
-        possible_results += f"\n- {result}"
+        tasks.append(run_worker(role=role, input=start_input, max_tokens=max_tokens))
 
-        if CONSOLE_LOGS:
+    results = await asyncio.gather(*tasks)
+
+    if CONSOLE_LOGS:
+        for idx, result in enumerate(results):
             print(f"single calculation ({idx+1}): {result}")
 
-    return possible_results
+    return results
 
 
-def handle_calculations(evaluator: Agent, user_input: str, research: str, max_tokens: int):
+async def handle_calculations(evaluator: Agent, user_input: str, research: str, max_tokens: int):
     """Runs calculations with varying temperature"""
-    possible_results = ""
     output_evaluation = ""
     start_input = f"""
     QUESTION: {user_input}
@@ -241,8 +252,9 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
     if CONSOLE_LOGS:
         print("START CALCULATIONS")
 
-    possible_results = handle_worker(start_input=start_input, possible_results=possible_results,
-                                     max_tokens=max_tokens, number_of_runs=CALCULATION_RUNS)
+    results_list = await handle_worker(start_input=start_input, max_tokens=max_tokens, number_of_runs=CALCULATION_RUNS)
+
+    possible_results = "\n".join(f"- {r}" for r in results_list)
 
     count_runs = 0
 
@@ -250,7 +262,7 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
         if CONSOLE_LOGS:
             print("POSSIBLE ANSWERS: ", possible_results)
 
-        output_evaluation = handle_evaluation(agent=evaluator, user_input=user_input, research=research,
+        output_evaluation = await handle_evaluation(agent=evaluator, user_input=user_input, research=research,
                                               results=possible_results, temperature=0.05, max_tokens=100)
         if CONSOLE_LOGS:
             print("evaluation: ", output_evaluation)
@@ -262,9 +274,11 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
 
         full_input = f"""{start_input}
 
-        POSSIBLE ANSWERS: {possible_results}"""
-        possible_results = handle_worker(start_input=full_input, possible_results=possible_results,
-                                         max_tokens=max_tokens, number_of_runs=1)
+        POSSIBLE ANSWERS: {results_list}"""
+        new_results = await handle_worker(start_input=start_input + f"\nPOSSIBLE ANSWERS: {possible_results}",
+                                               max_tokens=max_tokens, number_of_runs=1)
+
+        possible_results += "\n" + "\n".join(f"- {r}" for r in new_results)
         count_runs += 1
 
     if count_runs >= CALCULATION_RUNS*3:
@@ -273,7 +287,7 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
     return output_evaluation
 
 
-def handle_evaluation(agent: Agent, user_input, research: str, results: str, temperature: float, max_tokens: int):
+async def handle_evaluation(agent: Agent, user_input, research: str, results: str, temperature: float, max_tokens: int):
     """Adds possible results to user's query and evaluates them"""
     new_input = f"""
     QUESTION: {user_input}
@@ -283,7 +297,7 @@ def handle_evaluation(agent: Agent, user_input, research: str, results: str, tem
     POSSIBLE ANSWERS: {results}
     """
 
-    output = run_agent(agent=agent, input=new_input, temperature=temperature, max_tokens=max_tokens)
+    output = await run_agent(agent=agent, input=new_input, temperature=temperature, max_tokens=max_tokens)
 
     try:
         return json.loads(output).get("final_answer")
@@ -293,18 +307,19 @@ def handle_evaluation(agent: Agent, user_input, research: str, results: str, tem
         raise RuntimeError("Evaluator returned non-numeric answer")
 
 
-def main():
+
+async def main():
     check_ollama_model(MODEL)
 
     try:
         agent_researcher = Agent(model=MODEL, role=ROLE_RESEARCHER)
         agent_evaluator = Agent(model=MODEL, role=ROLE_EVALUATOR)
         user_input = input("> ")
-        research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.25, max_tokens=2000)
+        research = await handle_research(agent=agent_researcher, user_input=user_input, temperature=0.25, max_tokens=2000)
         if CONSOLE_LOGS:
             print(research)
 
-        results = handle_calculations(evaluator=agent_evaluator, user_input=user_input,
+        results = await handle_calculations(evaluator=agent_evaluator, user_input=user_input,
                                       research=research, max_tokens=1000)
 
         print("AGENT EVALUATION: ", results)
@@ -314,4 +329,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
