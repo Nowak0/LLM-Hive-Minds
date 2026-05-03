@@ -5,14 +5,21 @@ import time
 from datetime import datetime
 
 from Pure.Agent import Agent, check_ollama_model, quit_ollama
+from questions.question_bank import get_chosen_question
 
 CALCULATION_RUNS = 3
+<<<<<<< HEAD
 MODEL_OLD = "llama3.1:8b"
 MODEL_HEAVY = "deepseek-r1:14b"
 MODEL_REGULAR = "qwen2.5:7b"
 MODEL_LIGHT_ANALYTICAL = "phi4-mini"
 MODEL_LIGHT_KNOWLEDGE = "gemma2:2b"
+=======
+MODEL = "llama3.1:8b"
+
+>>>>>>> ff24051 (added question bank handling)
 CONSOLE_LOGS = True
+QUESTION_BANK = True
 
 ROLE_RESEARCHER = """You are a researcher that gathers insight about given math problem.
 
@@ -229,9 +236,18 @@ async def handle_worker(start_input: str, possible_results: str, model: str,max_
     for _ in range(number_of_runs):
         idx = random.randint(0, len(ROLES_CALCULATOR)-1)
         role = ROLES_CALCULATOR[idx]
+<<<<<<< HEAD
         tasks.append(run_worker(role=role, input=start_input, model=model, max_tokens=max_tokens))
         #possible_results += f"\n- {result}"
     results = await asyncio.gather(*tasks)
+=======
+        tasks.append(run_worker(role=role, input=start_input, max_tokens=max_tokens))
+
+    # results = await asyncio.gather(*tasks)
+    results = []    # this lessens the chances of a timeout for now
+    for t in tasks:
+        results.append(await t)
+>>>>>>> ff24051 (added question bank handling)
 
     if CONSOLE_LOGS:
         for idx, result in enumerate(results):
@@ -253,14 +269,20 @@ async def handle_calculations(evaluator: Agent, user_input: str, research: str, 
     if CONSOLE_LOGS:
         print("START CALCULATIONS")
 
+<<<<<<< HEAD
     results_list = await handle_worker(start_input=start_input, possible_results=possible_results, model=MODEL_HEAVY,
                                      max_tokens=max_tokens, number_of_runs=CALCULATION_RUNS)
     possible_results = "\n".join(f"- {r}" for r in results_list)
+=======
+    results_list = await handle_worker(start_input=start_input, max_tokens=max_tokens, number_of_runs=CALCULATION_RUNS)
+
+    possible_results = results_list
+>>>>>>> ff24051 (added question bank handling)
 
     count_runs = 0
     while count_runs < CALCULATION_RUNS*3:
         if CONSOLE_LOGS:
-            print("POSSIBLE ANSWERS: ", possible_results)
+            print("POSSIBLE ANSWERS: ", "\n".join(f"- {r}" for r in possible_results))
 
         output_evaluation = await handle_evaluation(agent=evaluator, user_input=user_input, research=research,
                                               results=possible_results, temperature=0.05, max_tokens=1000)
@@ -314,6 +336,7 @@ async def main():
     check_ollama_model(MODEL_HEAVY)
 
     try:
+<<<<<<< HEAD
         agent_researcher = Agent(model=MODEL_LIGHT_ANALYTICAL, role=ROLE_RESEARCHER)
         agent_evaluator = Agent(model=MODEL_REGULAR, role=ROLE_EVALUATOR)
         user_input = input("> ")
@@ -324,6 +347,21 @@ async def main():
 
         results =  await handle_calculations(evaluator=agent_evaluator, user_input=user_input,
                                       research=research, max_tokens=2000)
+=======
+        agent_researcher = Agent(model=MODEL, role=ROLE_RESEARCHER)
+        agent_evaluator = Agent(model=MODEL, role=ROLE_EVALUATOR)
+        if QUESTION_BANK:
+            question_input = get_chosen_question()
+            print(f"Chosen question: {question_input}\n")
+        else:
+            question_input = input("> ")
+        research = await handle_research(agent=agent_researcher, user_input=question_input, temperature=0.25, max_tokens=2000)
+        if CONSOLE_LOGS:
+            print(research)
+
+        results = await handle_calculations(evaluator=agent_evaluator, user_input=question_input,
+                                      research=research, max_tokens=1000)
+>>>>>>> ff24051 (added question bank handling)
 
         print("AGENT EVALUATION: ", results)
 
