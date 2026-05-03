@@ -17,18 +17,16 @@
   },
   {
     "question": "Let ABCD be a regular tetrahedron with side length 1. Let u = vector AB and v = vector AC. Compute the exact value of ||u + v||",
-    "correct_answer": "√3",
+    "correct_answer": "sqrt(3)",
     "acceptable_answers": [
-      "sqrt(3)",
-      "√3"
+      "sqrt(3)"
     ]
   },
   {
     "question": "Simplify the expression sqrt(50) + sqrt(18) - sqrt(8) and provide the result in exact radical form",
-    "correct_answer": "6√2",
+    "correct_answer": "6*sqrt(2)",
     "acceptable_answers": [
-      "6*sqrt(2)",
-      "6√2"
+      "6*sqrt(2)"
     ]
   },
   {
@@ -60,10 +58,9 @@
   },
   {
     "question": "Find the height of a regular tetrahedron with side length 1",
-    "correct_answer": "√6/3",
+    "correct_answer": "sqrt(2/3)",
     "acceptable_answers": [
-      "(√6)/3",
-      "√(2/3)"
+      "sqrt(2/3)"
     ]
   },
   {

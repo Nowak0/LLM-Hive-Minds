@@ -7,18 +7,6 @@ Currently, our system is designed to handle _mathematical_ questions.
 
 The project is realized as a part of a "Team Project" course as well as two engineering diploma projects at Gdańsk University of Technology
 
-## Running
-
-To use the app clone this repository to your device and run these commands in the main folder:
-
-### User input questions
-
-     main.py
-
-### Chosen questions from the question bank
-
-    main.py qBank
-
 ## Technology Stack
 
 * [__Ollama__](https://ollama.com/) - allows for the usage of local LLMs
