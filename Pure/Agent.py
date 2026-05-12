@@ -2,6 +2,7 @@ import subprocess
 import requests
 
 OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
+OLLAMA_TIMEOUT = 120
 
 
 def check_ollama_model(model: str):
@@ -56,6 +57,6 @@ class Agent():
             "format": "json"
         }
 
-        response = requests.post(OLLAMA_CHAT_URL, json=package)
+        response = requests.post(OLLAMA_CHAT_URL, json=package, timeout=OLLAMA_TIMEOUT)
         response.raise_for_status()
         return response.json()["message"]["content"]

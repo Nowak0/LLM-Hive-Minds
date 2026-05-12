@@ -1,10 +1,14 @@
 import random
 import json
-import math
+
 from Pure.Agent import Agent, check_ollama_model, quit_ollama
 
 CALCULATION_RUNS = 3
-MODEL = "llama3.1:8b"
+MODEL_OLD = "llama3.1:8b"
+MODEL_HEAVY = "deepseek-r1:14b"
+MODEL_REGULAR = "qwen2.5:7b"
+MODEL_LIGHT_ANALYTICAL = "phi4-mini"
+MODEL_LIGHT_KNOWLEDGE = "gemma2:2b"
 CONSOLE_LOGS = True
 
 ROLE_RESEARCHER = """You are a researcher that gathers insight about given math problem.
@@ -42,7 +46,9 @@ No numeric evaluation of candidates. No choosing “best fraction”. No computi
 ROLE_CALCULATOR_BASE = """You are a math specialist that calculates equations. 
 
 TASK:
-Compute the final numeric/symbolic result for the given expression/problem.
+Compute the final numeric/symbolic result for the given expression/problem. You will be given
+a full research and knowledge in a prompt with a problem. Be sure to use this research in order
+to maximize the accuracy of given result.
 
 OUTPUT (STRICT):
 - Show your step-by-step work in the "thought" field.
@@ -64,6 +70,11 @@ OUTPUT FORMAT:
 }
 """
 ROLE_CALCULATOR_ALGEBRA = """You are a math calculation engine specialized in symbolic simplification.
+
+TASK:
+Compute the final numeric/symbolic result for the given expression/problem. You will be given
+a full research and knowledge in a prompt with a problem. Be sure to use this research in order
+to maximize the accuracy of given result.
 
 METHOD:
 1) Rewrite the problem into a single simplified symbolic expression.
@@ -90,6 +101,11 @@ FORMAT:
 }
 """
 ROLE_CALCULATOR_STEPWISE = """You are a math calculation engine specialized in careful stepwise arithmetic.
+
+TASK:
+Compute the final numeric/symbolic result for the given expression/problem. You will be given
+a full research and knowledge in a prompt with a problem. Be sure to use this research in order
+to maximize the accuracy of given result.
 
 METHOD:
 1) Evaluate operations in a strict, explicit order (parentheses, powers, mult/div, add/sub).
@@ -120,7 +136,8 @@ ROLE_EVALUATOR = """You are a STRICT result selector for a math task.
 
 YOU WILL RECEIVE (as JSON in the user message):
 - question: the original user question/expression
-- research: factual, non-calculational insights relevant to the problem (may include constraints, domains, definitions, typical pitfalls)
+- research: factual, non-calculational insights relevant to the problem 
+    (may include constraints, domains, definitions, typical pitfalls)
 - possible_results: an array of candidate final answers (strings or numbers)
 
 GOAL:
@@ -132,8 +149,10 @@ ABSOLUTE CONSTRAINTS:
 - "final_answer" MUST be either:
   (a) one element copied from possible_results EXACTLY as it appears, or
   (b) the string "#not_good".
-- Do not explain, do not calculate and do not fix formatting
-
+- Do not explain and do not fix formatting
+- NEVER accept a solution that is in a non-final form, 
+    example: (-2 +- sqrt(20/3) * 18) or (10 choose 5) * 0.5^5 * 0.5^(10-5), etc.
+    In such solutions it is better to return output "#not_good".
 
 SELECTION POLICY (STRICT ORDER):
 
@@ -159,26 +178,6 @@ If possible_results: ["3.14", "pi"]
 """
 
 
-def normalize_results(results):
-    normalized_results = []
-
-    for res in results:
-        try:
-            value = res["final_answer"]
-            if math.isnan(value) or math.isinf(value):
-                continue
-            else:
-                normalized_results.append(value)
-        except Exception as e:
-            print("Could not normalize calculated result:", e)
-            continue
-
-    if len(normalized_results) == 1:
-        return normalized_results[0]
-    else:
-        return normalized_results
-
-
 def run_agent(agent: Agent, input: str, temperature: float = None, max_tokens: int = None):
     """Build a proper prompt for given agent and runs a chat with it"""
     prompt = agent.build_chat_prompt(input)
@@ -198,14 +197,16 @@ def handle_research(agent: Agent, user_input, temperature: float, max_tokens: in
     raw_insight = run_agent(agent=agent, input=user_input, temperature=temperature, max_tokens=max_tokens)
 
     try:
-        return json.loads(raw_insight)
+        return json.dumps(json.loads(raw_insight), indent=2)
     except json.decoder.JSONDecodeError:
         raise RuntimeError("Research agent failed to produce valid JSON")
+    finally:
+        quit_ollama(agent.model)
 
 
-def run_worker(role: str, input: str, max_tokens: int):
-    agent = Agent(model=MODEL, role=role)
-    result = run_agent(agent=agent, input=input, temperature=random.uniform(0.03, 0.1), max_tokens=max_tokens)
+def run_worker(role: str, input: str, model: str, max_tokens: int):
+    agent = Agent(model=model, role=role)
+    result = run_agent(agent=agent, input=input, temperature=0.05, max_tokens=max_tokens)
 
     try:
         data = json.loads(result)
@@ -216,16 +217,17 @@ def run_worker(role: str, input: str, max_tokens: int):
         raise RuntimeError("Calculation agent failed to produce valid JSON")
 
 
-def handle_worker(start_input: str, possible_results: str, max_tokens: int, number_of_runs: int):
+def handle_worker(start_input: str, possible_results: str, model: str,max_tokens: int, number_of_runs: int = 1):
     for _ in range(number_of_runs):
         idx = random.randint(0, len(ROLES_CALCULATOR)-1)
         role = ROLES_CALCULATOR[idx]
-        result = run_worker(role=role, input=start_input, max_tokens=max_tokens)
+        result = run_worker(role=role, input=start_input, model=model, max_tokens=max_tokens)
         possible_results += f"\n- {result}"
 
         if CONSOLE_LOGS:
             print(f"single calculation ({idx+1}): {result}")
 
+    quit_ollama(model)
     return possible_results
 
 
@@ -241,17 +243,15 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
     if CONSOLE_LOGS:
         print("START CALCULATIONS")
 
-    possible_results = handle_worker(start_input=start_input, possible_results=possible_results,
+    possible_results = handle_worker(start_input=start_input, possible_results=possible_results, model=MODEL_HEAVY,
                                      max_tokens=max_tokens, number_of_runs=CALCULATION_RUNS)
-
     count_runs = 0
-
-    while count_runs <= CALCULATION_RUNS*3:
+    while count_runs < CALCULATION_RUNS*3:
         if CONSOLE_LOGS:
             print("POSSIBLE ANSWERS: ", possible_results)
 
         output_evaluation = handle_evaluation(agent=evaluator, user_input=user_input, research=research,
-                                              results=possible_results, temperature=0.05, max_tokens=100)
+                                              results=possible_results, temperature=0.05, max_tokens=1000)
         if CONSOLE_LOGS:
             print("evaluation: ", output_evaluation)
 
@@ -263,13 +263,14 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
         full_input = f"""{start_input}
 
         POSSIBLE ANSWERS: {possible_results}"""
-        possible_results = handle_worker(start_input=full_input, possible_results=possible_results,
+        possible_results = handle_worker(start_input=full_input, possible_results=possible_results, model=MODEL_HEAVY,
                                          max_tokens=max_tokens, number_of_runs=1)
         count_runs += 1
 
     if count_runs >= CALCULATION_RUNS*3:
         raise Exception("Could not find reliable answer")
 
+    quit_ollama(evaluator.model)
     return output_evaluation
 
 
@@ -287,30 +288,34 @@ def handle_evaluation(agent: Agent, user_input, research: str, results: str, tem
 
     try:
         return json.loads(output).get("final_answer")
+    except json.decoder.JSONDecodeError:
+        raise RuntimeError("Calculation agent failed to produce valid JSON")
     except KeyError:
         raise RuntimeError("Evaluation JSON missing 'final_answer' key")
-    except ValueError:
-        raise RuntimeError("Evaluator returned non-numeric answer")
-
 
 def main():
-    check_ollama_model(MODEL)
+    check_ollama_model(MODEL_LIGHT_ANALYTICAL)
+    check_ollama_model(MODEL_REGULAR)
+    check_ollama_model(MODEL_HEAVY)
 
     try:
-        agent_researcher = Agent(model=MODEL, role=ROLE_RESEARCHER)
-        agent_evaluator = Agent(model=MODEL, role=ROLE_EVALUATOR)
+        agent_researcher = Agent(model=MODEL_LIGHT_ANALYTICAL, role=ROLE_RESEARCHER)
+        agent_evaluator = Agent(model=MODEL_REGULAR, role=ROLE_EVALUATOR)
         user_input = input("> ")
-        research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.25, max_tokens=2000)
+
+        research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.15, max_tokens=2000)
         if CONSOLE_LOGS:
             print(research)
 
         results = handle_calculations(evaluator=agent_evaluator, user_input=user_input,
-                                      research=research, max_tokens=1000)
+                                      research=research, max_tokens=2000)
 
         print("AGENT EVALUATION: ", results)
 
     finally:
-        quit_ollama(MODEL)
+        quit_ollama(MODEL_LIGHT_ANALYTICAL)
+        quit_ollama(MODEL_REGULAR)
+        quit_ollama(MODEL_HEAVY)
 
 
 if __name__ == "__main__":
