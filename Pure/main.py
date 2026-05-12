@@ -6,7 +6,7 @@ from Pure.Agent import Agent, check_ollama_model, quit_ollama
 CALCULATION_RUNS = 3
 MODEL_OLD = "llama3.1:8b"
 MODEL_HEAVY = "deepseek-r1:14b"
-MODEL_REGULAR = "gemma2:9b"
+MODEL_REGULAR = "qwen2.5:7b"
 MODEL_LIGHT_ANALYTICAL = "phi4-mini"
 MODEL_LIGHT_KNOWLEDGE = "gemma2:2b"
 CONSOLE_LOGS = True
@@ -204,8 +204,8 @@ def handle_research(agent: Agent, user_input, temperature: float, max_tokens: in
         quit_ollama(agent.model)
 
 
-def run_worker(role: str, input: str, max_tokens: int):
-    agent = Agent(model=MODEL_HEAVY, role=role)
+def run_worker(role: str, input: str, model: str, max_tokens: int):
+    agent = Agent(model=model, role=role)
     result = run_agent(agent=agent, input=input, temperature=0.05, max_tokens=max_tokens)
 
     try:
@@ -215,20 +215,19 @@ def run_worker(role: str, input: str, max_tokens: int):
         return data.get("final_answer")
     except json.decoder.JSONDecodeError:
         raise RuntimeError("Calculation agent failed to produce valid JSON")
-    finally:
-        quit_ollama(agent.model)
 
 
-def handle_worker(start_input: str, possible_results: str, max_tokens: int, number_of_runs: int):
+def handle_worker(start_input: str, possible_results: str, model: str,max_tokens: int, number_of_runs: int = 1):
     for _ in range(number_of_runs):
         idx = random.randint(0, len(ROLES_CALCULATOR)-1)
         role = ROLES_CALCULATOR[idx]
-        result = run_worker(role=role, input=start_input, max_tokens=max_tokens)
+        result = run_worker(role=role, input=start_input, model=model, max_tokens=max_tokens)
         possible_results += f"\n- {result}"
 
         if CONSOLE_LOGS:
             print(f"single calculation ({idx+1}): {result}")
 
+    quit_ollama(model)
     return possible_results
 
 
@@ -244,7 +243,7 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
     if CONSOLE_LOGS:
         print("START CALCULATIONS")
 
-    possible_results = handle_worker(start_input=start_input, possible_results=possible_results,
+    possible_results = handle_worker(start_input=start_input, possible_results=possible_results, model=MODEL_HEAVY,
                                      max_tokens=max_tokens, number_of_runs=CALCULATION_RUNS)
     count_runs = 0
     while count_runs < CALCULATION_RUNS*3:
@@ -264,13 +263,14 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
         full_input = f"""{start_input}
 
         POSSIBLE ANSWERS: {possible_results}"""
-        possible_results = handle_worker(start_input=full_input, possible_results=possible_results,
+        possible_results = handle_worker(start_input=full_input, possible_results=possible_results, model=MODEL_HEAVY,
                                          max_tokens=max_tokens, number_of_runs=1)
         count_runs += 1
 
     if count_runs >= CALCULATION_RUNS*3:
         raise Exception("Could not find reliable answer")
 
+    quit_ollama(evaluator.model)
     return output_evaluation
 
 
@@ -303,7 +303,7 @@ def main():
         agent_evaluator = Agent(model=MODEL_REGULAR, role=ROLE_EVALUATOR)
         user_input = input("> ")
 
-        research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.2, max_tokens=2000)
+        research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.15, max_tokens=2000)
         if CONSOLE_LOGS:
             print(research)
 
@@ -313,7 +313,9 @@ def main():
         print("AGENT EVALUATION: ", results)
 
     finally:
+        quit_ollama(MODEL_LIGHT_ANALYTICAL)
         quit_ollama(MODEL_REGULAR)
+        quit_ollama(MODEL_HEAVY)
 
 
 if __name__ == "__main__":
