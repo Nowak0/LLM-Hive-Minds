@@ -1,9 +1,14 @@
 import random
 import json
+
 from Pure.Agent import Agent, check_ollama_model, quit_ollama
 
 CALCULATION_RUNS = 3
-MODEL = "llama3.1:8b"
+MODEL_OLD = "llama3.1:8b"
+MODEL_HEAVY = "deepseek-r1:14b"
+MODEL_REGULAR = "gemma2:9b"
+MODEL_LIGHT_ANALYTICAL = "phi4-mini"
+MODEL_LIGHT_KNOWLEDGE = "gemma2:2b"
 CONSOLE_LOGS = True
 
 ROLE_RESEARCHER = """You are a researcher that gathers insight about given math problem.
@@ -195,10 +200,12 @@ def handle_research(agent: Agent, user_input, temperature: float, max_tokens: in
         return json.dumps(json.loads(raw_insight), indent=2)
     except json.decoder.JSONDecodeError:
         raise RuntimeError("Research agent failed to produce valid JSON")
+    finally:
+        quit_ollama(agent.model)
 
 
 def run_worker(role: str, input: str, max_tokens: int):
-    agent = Agent(model=MODEL, role=role)
+    agent = Agent(model=MODEL_HEAVY, role=role)
     result = run_agent(agent=agent, input=input, temperature=0.05, max_tokens=max_tokens)
 
     try:
@@ -208,6 +215,8 @@ def run_worker(role: str, input: str, max_tokens: int):
         return data.get("final_answer")
     except json.decoder.JSONDecodeError:
         raise RuntimeError("Calculation agent failed to produce valid JSON")
+    finally:
+        quit_ollama(agent.model)
 
 
 def handle_worker(start_input: str, possible_results: str, max_tokens: int, number_of_runs: int):
@@ -237,15 +246,13 @@ def handle_calculations(evaluator: Agent, user_input: str, research: str, max_to
 
     possible_results = handle_worker(start_input=start_input, possible_results=possible_results,
                                      max_tokens=max_tokens, number_of_runs=CALCULATION_RUNS)
-
     count_runs = 0
-
     while count_runs < CALCULATION_RUNS*3:
         if CONSOLE_LOGS:
             print("POSSIBLE ANSWERS: ", possible_results)
 
         output_evaluation = handle_evaluation(agent=evaluator, user_input=user_input, research=research,
-                                              results=possible_results, temperature=0.05, max_tokens=300)
+                                              results=possible_results, temperature=0.05, max_tokens=1000)
         if CONSOLE_LOGS:
             print("evaluation: ", output_evaluation)
 
@@ -286,13 +293,14 @@ def handle_evaluation(agent: Agent, user_input, research: str, results: str, tem
     except KeyError:
         raise RuntimeError("Evaluation JSON missing 'final_answer' key")
 
-
 def main():
-    check_ollama_model(MODEL)
+    check_ollama_model(MODEL_LIGHT_ANALYTICAL)
+    check_ollama_model(MODEL_REGULAR)
+    check_ollama_model(MODEL_HEAVY)
 
     try:
-        agent_researcher = Agent(model=MODEL, role=ROLE_RESEARCHER)
-        agent_evaluator = Agent(model=MODEL, role=ROLE_EVALUATOR)
+        agent_researcher = Agent(model=MODEL_LIGHT_ANALYTICAL, role=ROLE_RESEARCHER)
+        agent_evaluator = Agent(model=MODEL_REGULAR, role=ROLE_EVALUATOR)
         user_input = input("> ")
 
         research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.2, max_tokens=2000)
@@ -305,7 +313,7 @@ def main():
         print("AGENT EVALUATION: ", results)
 
     finally:
-        quit_ollama(MODEL)
+        quit_ollama(MODEL_REGULAR)
 
 
 if __name__ == "__main__":
