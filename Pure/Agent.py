@@ -3,6 +3,7 @@ import requests
 import aiohttp
 
 OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
+OLLAMA_TIMEOUT = 120
 
 
 def check_ollama_model(model: str):
