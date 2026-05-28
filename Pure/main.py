@@ -9,11 +9,16 @@ from questions.question_bank import get_chosen_question
 
 CALCULATION_RUNS = 3
 MODEL_OLD = "llama3.1:8b"
-#MODEL_HEAVY = "deepseek-r1:14b"
+# MODEL_HEAVY = "deepseek-r1:14b"
 MODEL_HEAVY = "llama3.1:8b"
 MODEL_REGULAR = "qwen2.5:7b"
+MODEL_REGULAR_LIGHT = "qwen2.5:3b"
 MODEL_LIGHT_ANALYTICAL = "phi4-mini"
 MODEL_LIGHT_KNOWLEDGE = "gemma2:2b"
+
+# these models aren't the best at math but they are small an make testing easier/possible at all
+CALCULATOR_MODELS = [MODEL_LIGHT_ANALYTICAL, MODEL_LIGHT_KNOWLEDGE, MODEL_REGULAR_LIGHT]
+
 CONSOLE_LOGS = True
 QUESTION_BANK = True
 
@@ -137,7 +142,7 @@ FORMAT:
     "final_answer": result
 }
 """
-ROLES_CALCULATOR = [ROLE_CALCULATOR_BASE, ROLE_CALCULATOR_ALGEBRA,ROLE_CALCULATOR_STEPWISE]
+ROLES_CALCULATOR = [ROLE_CALCULATOR_BASE, ROLE_CALCULATOR_ALGEBRA, ROLE_CALCULATOR_STEPWISE]
 ROLE_EVALUATOR = """You are a STRICT result selector for a math task.
 
 YOU WILL RECEIVE (as JSON in the user message):
@@ -211,12 +216,16 @@ async def handle_research(agent: Agent, user_input, temperature: float, max_toke
 
 
 async def run_worker(role: str, input: str, model: str, max_tokens: int):
-    #start = datetime.now()
-    #print(f"[START] {role[9:27]}... at {start.strftime('%H:%M:%S')}")
+    if CONSOLE_LOGS:
+        start = datetime.now()
+        print(f"[START] {role[9:27]}... at {start.strftime('%H:%M:%S')} for model: {model}")
+
     agent = Agent(model=model, role=role)
-    result =await run_agent(agent=agent, input=input, temperature=0.05, max_tokens=max_tokens)
-    #end = datetime.now()
-    #print(f"[END] {role[9:27]}... at {start.strftime('%H:%M:%S')} (duration {(end - start).total_seconds():.2f}s)")
+    result = await run_agent(agent=agent, input=input, temperature=0.05, max_tokens=max_tokens)
+
+    if CONSOLE_LOGS:
+        end = datetime.now()
+        print(f"[END] {role[9:27]}... at {start.strftime('%H:%M:%S')} (duration {(end - start).total_seconds():.2f}s)")
 
     try:
         data = json.loads(result)
@@ -227,23 +236,25 @@ async def run_worker(role: str, input: str, model: str, max_tokens: int):
         raise RuntimeError("Calculation agent failed to produce valid JSON")
 
 
-async def handle_worker(start_input: str, possible_results: str, model: str,max_tokens: int, number_of_runs: int = 1):
+async def handle_worker(start_input: str, possible_results: str, max_tokens: int, number_of_runs: int = 1):
     tasks = []
     for _ in range(number_of_runs):
-        idx = random.randint(0, len(ROLES_CALCULATOR)-1)
+        idx = random.randint(0, len(ROLES_CALCULATOR) - 1)
         role = ROLES_CALCULATOR[idx]
-        tasks.append(run_worker(role=role, input=start_input, model = model, max_tokens=max_tokens))
+        # if the models are the same for two calculators then we have a bottleneck and they're done sequentially anyway
+        chosen_model = random.choice(CALCULATOR_MODELS)
+        tasks.append(run_worker(role=role, input=start_input, model=chosen_model, max_tokens=max_tokens))
 
-    #results = await asyncio.gather(*tasks)
-    results = []    # it should be gather but this lessens the chances of a timeout for now and makes it actually possible to test
-    for t in tasks:
-        results.append(await t)
+    results = await asyncio.gather(*tasks)
+    #results = []  # it should be gather but this lessens the chances of a timeout for now and makes it actually possible to test
+    #for t in tasks:
+    #    results.append(await t)
 
     if CONSOLE_LOGS:
         for idx, result in enumerate(results):
-            print(f"single calculation ({idx+1}): {result}")
+            print(f"single calculation ({idx + 1}): {result}")
 
-    quit_ollama(model)
+    #quit_ollama(model)
     return results
 
 
@@ -259,36 +270,36 @@ async def handle_calculations(evaluator: Agent, user_input: str, research: str, 
     if CONSOLE_LOGS:
         print("START CALCULATIONS")
 
-    results_list = await handle_worker(start_input=start_input, possible_results=possible_results, model=MODEL_HEAVY,
-                                     max_tokens=max_tokens, number_of_runs=CALCULATION_RUNS)
-    #possible_results = "\n".join(f"- {r}" for r in results_list)
+    results_list = await handle_worker(start_input=start_input, possible_results=possible_results,
+                                       max_tokens=max_tokens, number_of_runs=CALCULATION_RUNS)
+    # possible_results = "\n".join(f"- {r}" for r in results_list)
     possible_results = results_list
 
     count_runs = 0
-    while count_runs < CALCULATION_RUNS*3:
+    while count_runs < CALCULATION_RUNS * 3:
         if CONSOLE_LOGS:
             print("POSSIBLE ANSWERS: \n", "\n".join(f"- {r}" for r in possible_results))
 
         output_evaluation = await handle_evaluation(agent=evaluator, user_input=user_input, research=research,
-                                              results=possible_results, temperature=0.05, max_tokens=1000)
+                                                    results=possible_results, temperature=0.05, max_tokens=1000)
         if CONSOLE_LOGS:
             print("evaluation: ", output_evaluation)
 
         if output_evaluation != "#not_good":
             break
-        elif CONSOLE_LOGS :
+        elif CONSOLE_LOGS:
             print(f"Answers not good enough")
 
         full_input = f"""{start_input}
 
         POSSIBLE ANSWERS: {results_list}"""
-        new_results = await handle_worker(start_input=full_input, possible_results=possible_results, model=MODEL_HEAVY,
-                                         max_tokens=max_tokens, number_of_runs=1)
+        new_results = await handle_worker(start_input=full_input, possible_results=possible_results,
+                                          max_tokens=max_tokens, number_of_runs=1)
 
         possible_results += "\n".join(f"- {r}" for r in new_results)
         count_runs += 1
 
-    if count_runs >= CALCULATION_RUNS*3:
+    if count_runs >= CALCULATION_RUNS * 3:
         raise Exception("Could not find reliable answer")
 
     quit_ollama(evaluator.model)
@@ -301,7 +312,7 @@ async def handle_evaluation(agent: Agent, user_input, research: str, results: st
     QUESTION: {user_input}
 
     RESEARCH: {research}
-    
+
     POSSIBLE ANSWERS: {results}
     """
 
@@ -318,7 +329,8 @@ async def handle_evaluation(agent: Agent, user_input, research: str, results: st
 async def main():
     check_ollama_model(MODEL_LIGHT_ANALYTICAL)
     check_ollama_model(MODEL_REGULAR)
-    check_ollama_model(MODEL_HEAVY)
+    for model in CALCULATOR_MODELS:
+        check_ollama_model(model)
 
     try:
         agent_researcher = Agent(model=MODEL_LIGHT_ANALYTICAL, role=ROLE_RESEARCHER)
@@ -329,12 +341,13 @@ async def main():
         else:
             question_input = input("> ")
 
-        research =  await handle_research(agent=agent_researcher, user_input=question_input, temperature=0.15, max_tokens=2000)
+        research = await handle_research(agent=agent_researcher, user_input=question_input, temperature=0.15,
+                                         max_tokens=2000)
         if CONSOLE_LOGS:
             print(research)
 
-        results =  await handle_calculations(evaluator=agent_evaluator, user_input=question_input,
-                                      research=research, max_tokens=1000)
+        results = await handle_calculations(evaluator=agent_evaluator, user_input=question_input,
+                                            research=research, max_tokens=1000)
 
         print("AGENT EVALUATION: ", results)
 

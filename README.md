@@ -12,6 +12,7 @@ The project is realized as a part of a "Team Project" course as well as two engi
 * [__Ollama__](https://ollama.com/) - allows for the usage of local LLMs
   * [__Llama3.1:8b__](https://ollama.com/library/llama3.1:8b)
   * [__qwen2.5:7b__](https://ollama.com/library/qwen2.5:7b) 
+  * [__qwen2.5:3b__](https://ollama.com/library/qwen2.5:3b) 
   * [__phi4-mini__](https://ollama.com/library/phi4-mini)  
   * [__gemma2:2b__](https://ollama.com/library/gemma2:2b) 
   * [__deepseek-r1:14b__](https://ollama.com/library/deepseek-r1:14b) 
