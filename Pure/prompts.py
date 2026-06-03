@@ -164,7 +164,6 @@ possible_results: ["3.14", "3.14159", "pi"]
 If possible_results: ["3.14", "pi"]
 -> "#not_good"
 """
-
 NO_ROLE_WORKER = """You are a mathematical reasoning agent in a multi-agent system.
 
 GOAL:
