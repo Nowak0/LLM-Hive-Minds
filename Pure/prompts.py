@@ -170,19 +170,22 @@ GOAL:
 Solve the given problem incrementally using provided research and/or your own computations.
 
 RULES:
-- Work incrementally (do not solve entire problem in one step if not needed).
-- Prefer exact expressions.
-- If external knowledge is needed, add it to research.
-- Do not repeat other agents' reasoning; only extend or refine.
-- Only one field group may be non-empty depending on status.
-- Each response must contain at most one logical transformation or one inference step.
+1. Work incrementally (one logical transformation or inference step per response).
+2. Compare your intended step against PREVIOUS RESEARCH and PREVIOUS CALCULATIONS. If your step is already listed there,
+ you MUST change your strategy or set status to "idle".
+3. Provide completely NEW and NOVEL information only. 
+4. Prefer exact mathematical expressions (e.g., 2/3, sqrt(2), pi).
+5. Only one field (research, calculation, or final_answer) should be populated with new data depending on the chosen status.
 
 OUTPUT (STRICT):
+- Show your step-by-step work in the "thought" field.
 - Show what have you done in the "status" field.
 - If you found new information share it the "research" field and set the status to "research".
 - If you done some calculations show them in "calculation" field and set the status to "calculating".
 - If you think you solved the problem place the final answer in the "final_answer" field and set the status to "done".
-- If you have not done any research nor calculations set the status to "idle".
+- Set status to "idle" only if:
+    - the problem is already solved, or
+    - another agent has already produced the same step you intended to produce.
 
 FINAL_ANSWER RULES:
 - Provide ONE final result only.
@@ -194,10 +197,29 @@ FINAL_ANSWER RULES:
 - If there is no valid solution, output {"final_answer": "#no_solution"}.
 
 OUTPUT FORMAT:
+You must reply with valid JSON only, using exactly the following structure:
 {
-  "status": "research | calculating | done | idle",
-  "research": ["fact 1", "fact 2"],
-  "calculation": ["equation or transformation 1"],
-  "final_answer": null
+    "thought": "Briefly state what has been done so far, what is missing, and what your exact next action will be to avoid duplication.",
+    "status": "research | calculating | done | idle",
+    "research": "A single new fact, or null",
+    "calculation": "A single new equation/transformation, or null",
+    "final_answer": "The final answer, or null"
+}
+
+EXAMPLEd OF A GOOD RESPONSE:
+{
+    "thought": "We have the lengths of two legs (3 and 4). I need to apply the Pythagorean theorem to find the hypotenuse c.",
+    "status": "calculating",
+    "research": null,
+    "calculation": "c = sqrt(3^2 + 4^2)",
+    "final_answer": null
+}
+
+{
+    "thought": "To find a rational approximation of π with a denominator less than 1,000, I will use the continued fraction representation of π and truncate it at an appropriate point to get a fraction with a small enough denominator.",
+    "status": "research",
+    "research": "Need to find a rational number p/q such that |π - p/q| < 1/999 and q < 1000",
+    "calculation": null,
+    "final_answer": null
 }
 """

@@ -2,10 +2,7 @@ Find a rational approximation of π with denominator less than 1,000
 
 Find the length of the hypotenuse of a right triangle with legs 3 and 4
 
-Let ABCD be a regular tetrahedron with side length 1.
-Let u = vector AB and v = vector AC.
-Compute the exact value of
-||u + v||
+Let ABCD be a regular tetrahedron with side length 1. Let u = vector AB and v = vector AC. Compute the exact value of ||u + v||.
 
 Simplify the expression sqrt(50) + sqrt(18) - sqrt(8) and provide the result in exact radical form
 
