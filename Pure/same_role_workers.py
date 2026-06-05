@@ -90,7 +90,7 @@ def handle_worker(worker: Agent, insight: dict):
         response = run_worker(worker, insight=insight, temperature=0.05, max_tokens=2000)
         return handle_response(response, insight)
     except StatusMismatchException as e:
-        print("Worker responded with wrong status code. Correct response:", e)
+        console_log(f"Worker responded with wrong status code. Correct response: {e}")
         return None
 
 
