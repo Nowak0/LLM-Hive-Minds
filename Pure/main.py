@@ -2,6 +2,8 @@ import random
 import json
 
 from Pure.Agent import Agent, check_ollama_model, quit_ollama
+from Pure.exceptions import StagnationException, StatusMismatchException
+from Pure.prompts import ROLES_CALCULATOR, ROLE_EVALUATOR, ROLE_RESEARCHER, NO_ROLE_WORKER
 
 CALCULATION_RUNS = 3
 MODEL_OLD = "llama3.1:8b"
@@ -11,172 +13,7 @@ MODEL_LIGHT_ANALYTICAL = "phi4-mini"
 MODEL_LIGHT_KNOWLEDGE = "gemma2:2b"
 CONSOLE_LOGS = True
 
-ROLE_RESEARCHER = """You are a researcher that gathers insight about given math problem.
-
-TASK:
-Provide (A) theory/method notes and (B) optional checkable constraints that help downstream agents.
-You must NOT compute the specific solution. 
-Your output MUST help downstream agents (calculators + evaluator) by providing:
-1) factual background / methods (theory), AND
-2) explicit, checkable constraints ONLY WHEN they are warranted (implied by the question and by standard definitions).
-
-ABSOLUTE RULES:
-- Do NOT perform any calculations.
-- Do NOT solve the problem.
-- Do NOT approximate any numeric answer for the specific instance.
-- Do NOT select among candidate answers.
-- Do NOT speculate or add heuristics.
-- Output MUST be valid JSON only (no markdown, no extra text).
-
-CONSTRAINT POLICY (VERY IMPORTANT):
-- It is OK to output mostly null/empty constraints.
-- You may fill a constraint ONLY if:
-  (1) it is explicitly stated in the question, OR
-  (2) it is a direct consequence of a standard definition that you explicitly wrote in theory_notes/methods.
-- If you set ANY constraint field to a non-null value, add a corresponding entry to constraint_sources.
-
-QUALITY REQUIREMENT:
-- theory_notes MUST contain at least 3 items.
-- methods MUST contain at least 1 item when the problem is non-trivial.
-- constraints.validity_checks_for_evaluator should be present even if empty ([]).
-
-REMINDER:
-No numeric evaluation of candidates. No choosing “best fraction”. No computing convergents.
-"""
-ROLE_CALCULATOR_BASE = """You are a math specialist that calculates equations. 
-
-TASK:
-Compute the final numeric/symbolic result for the given expression/problem. You will be given
-a full research and knowledge in a prompt with a problem. Be sure to use this research in order
-to maximize the accuracy of given result.
-
-OUTPUT (STRICT):
-- Show your step-by-step work in the "thought" field.
-- Provide the final exact result in the "final_answer" field without any reasoning.
-
-FINAL_ANSWER RULES:
-- Provide ONE final result only.
-- Prefer EXACT form when possible (e.g., 2/3, sqrt(2), pi, 3*sqrt(5)/2).
-- Do NOT round unless the user explicitly requests rounding/decimal approximation.
-- If you must output a decimal (because the prompt requires it), output full precision available from exact conversion, without commentary.
-- If there is a common fraction, do not decompose it into nominator and denominator -> provide x/y style. 
-- Use standard ASCII: "sqrt(2)" not "√2".
-- If there is no valid solution, output {"final_answer": "#no_solution"}.
-
-OUTPUT FORMAT:
-{
-    "thought": "Your step-by-step reasoning here...",
-    "final_answer": result
-}
-"""
-ROLE_CALCULATOR_ALGEBRA = """You are a math calculation engine specialized in symbolic simplification.
-
-TASK:
-Compute the final numeric/symbolic result for the given expression/problem. You will be given
-a full research and knowledge in a prompt with a problem. Be sure to use this research in order
-to maximize the accuracy of given result.
-
-METHOD:
-1) Rewrite the problem into a single simplified symbolic expression.
-2) Simplify algebraically (factor/cancel/common denominators) before evaluating.
-3) Only at the end produce the final exact result.
-
-OUTPUT (STRICT):
-- Show your step-by-step work in the "thought" field.
-- Provide the final exact result in the "final_answer" field.
-
-FINAL_ANSWER RULES:
-- Provide ONE final result only.
-- Prefer EXACT form when possible (e.g., 2/3, sqrt(2), pi, 3*sqrt(5)/2).
-- Do NOT round unless the user explicitly requests rounding/decimal approximation.
-- If you must output a decimal (because the prompt requires it), output full precision available from exact conversion, without commentary.
-- If there is a common fraction, do not decompose it into nominator and denominator -> provide x/y style. 
-- Use standard ASCII: "sqrt(2)" not "√2".
-- If there is no valid solution, output {"final_answer": "#no_solution"}.
-
-FORMAT:
-{
-    "thought": "Your step-by-step reasoning here...",
-    "final_answer": result
-}
-"""
-ROLE_CALCULATOR_STEPWISE = """You are a math calculation engine specialized in careful stepwise arithmetic.
-
-TASK:
-Compute the final numeric/symbolic result for the given expression/problem. You will be given
-a full research and knowledge in a prompt with a problem. Be sure to use this research in order
-to maximize the accuracy of given result.
-
-METHOD:
-1) Evaluate operations in a strict, explicit order (parentheses, powers, mult/div, add/sub).
-2) Keep results as exact fractions whenever possible.
-3) Perform cancellation and gcd reductions frequently to avoid overflow/mistakes.
-
-OUTPUT (STRICT):
-- Show your step-by-step work in the "thought" field.
-- Provide the final exact result in the "final_answer" field.
-
-FINAL_ANSWER RULES:
-- Provide ONE final result only.
-- Prefer EXACT form when possible (e.g., 2/3, sqrt(2), pi, 3*sqrt(5)/2).
-- Do NOT round unless the user explicitly requests rounding/decimal approximation.
-- If you must output a decimal (because the prompt requires it), output full precision available from exact conversion, without commentary.
-- If there is a common fraction, do not decompose it into nominator and denominator -> provide x/y style. 
-- Use standard ASCII: "sqrt(2)" not "√2".
-- If there is no valid solution, output {"final_answer": "#no_solution"}.
-
-FORMAT:
-{
-    "thought": "Your step-by-step reasoning here...",
-    "final_answer": result
-}
-"""
-ROLES_CALCULATOR = [ROLE_CALCULATOR_BASE, ROLE_CALCULATOR_ALGEBRA,ROLE_CALCULATOR_STEPWISE]
-ROLE_EVALUATOR = """You are a STRICT result selector for a math task.
-
-YOU WILL RECEIVE (as JSON in the user message):
-- question: the original user question/expression
-- research: factual, non-calculational insights relevant to the problem 
-    (may include constraints, domains, definitions, typical pitfalls)
-- possible_results: an array of candidate final answers (strings or numbers)
-
-GOAL:
-Select the best final answer ONLY from possible_results.
-If no candidate is good enough OR quality is insufficient, output "#not_good".
-
-ABSOLUTE CONSTRAINTS:
-- Output EXACTLY one JSON object with exactly one key: "final_answer".
-- "final_answer" MUST be either:
-  (a) one element copied from possible_results EXACTLY as it appears, or
-  (b) the string "#not_good".
-- Do not explain and do not fix formatting
-- NEVER accept a solution that is in a non-final form, 
-    example: (-2 +- sqrt(20/3) * 18) or (10 choose 5) * 0.5^5 * 0.5^(10-5), etc.
-    In such solutions it is better to return output "#not_good".
-
-SELECTION POLICY (STRICT ORDER):
-
-1) Filter: Remove invalid/null entries. Discard candidates violating 'research' (domain, precision, format).
-2) Cluster: Group equivalent values (e.g., "0.5", "1/2", "0.50").
-3) Evaluate: 
-   - If a specific precision (e.g., "5 decimals") is required and no candidate meets it -> "#not_good".
-   - If no precision specified prefer fractions
-   - Pick the cluster with the most support.
-   - If there is a tie or no clear majority (support < 2) and the problem is non-trivial -> "#not_good".
-
-OUTPUT FORMAT (exactly):
-{
-  "final_answer": "<one of possible_results or #not_good>"
-}
-
-EXAMPLE (precision):
-question: "Approximate pi to 5 decimal places"
-possible_results: ["3.14", "3.14159", "pi"]
--> choose "3.14159"
-If possible_results: ["3.14", "pi"]
--> "#not_good"
-"""
-
+N_NO_ROLE_WORKERS = 2
 
 def run_agent(agent: Agent, input: str, temperature: float = None, max_tokens: int = None):
     """Build a proper prompt for given agent and runs a chat with it"""
@@ -293,25 +130,138 @@ def handle_evaluation(agent: Agent, user_input, research: str, results: str, tem
     except KeyError:
         raise RuntimeError("Evaluation JSON missing 'final_answer' key")
 
+
+def different_roles_defined(user_input: str):
+    """Model where different roles for agents are defined (researcher, calculator, evaluator)"""
+    agent_researcher = Agent(model=MODEL_LIGHT_ANALYTICAL, role=ROLE_RESEARCHER)
+    agent_evaluator = Agent(model=MODEL_REGULAR, role=ROLE_EVALUATOR)
+    user_input = input("> ")
+
+    research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.15, max_tokens=2000)
+    if CONSOLE_LOGS:
+        print(research)
+
+    results = handle_calculations(evaluator=agent_evaluator, user_input=user_input,
+                                  research=research, max_tokens=2000)
+
+    print("AGENT EVALUATION: ", results)
+
+
+def run_basic_worker(agent: Agent, input: str, temperature: float, max_tokens: int):
+    result = run_agent(agent=agent, input=input, temperature=temperature, max_tokens=max_tokens)
+
+    try:
+        data = json.loads(result)
+        # if CONSOLE_LOGS:
+        #     print(f"Worker thought:\n{data.get('thought')}\n")
+        return data
+    except json.decoder.JSONDecodeError:
+        raise RuntimeError("Calculation agent failed to produce valid JSON")
+
+
+def handle_new_information(information_arr: list[str], new_information: str):
+    if CONSOLE_LOGS:
+        print(f"\t{new_information}")
+
+    if new_information not in information_arr:
+        information_arr.append(new_information)
+    else:
+        stagnation_counter = 0
+        for i in information_arr[-10:]:
+            if i == new_information:
+                stagnation_counter += 1
+        if stagnation_counter >= 6:
+            raise StagnationException(f"Stagnation occurred: {new_information}")
+
+
+
+def handle_response(response, research: list[str], calculations: list[str], final_answer):
+    if CONSOLE_LOGS:
+        print(f"\tThought process:\n\t- {response.get("thought")}")
+
+    found_final_answer = False
+
+    status = response.get('status')
+    if CONSOLE_LOGS:
+        print(f"\tStatus: {status}")
+    match status:
+        case "research":
+            handle_new_information(research, response.get("research"))
+            if response.get("calculation") is not None:
+                raise StatusMismatchException(f"Wrong status error. Response: {response.get("calculation")}")
+        case "calculating":
+            handle_new_information(calculations, response.get("calculation"))
+            if response.get("research") is not None:
+                raise StatusMismatchException(f"Wrong status error. Response: {response.get("research")}")
+        case "done":
+            final_answer = response.get("final_answer")
+            found_final_answer = True
+        case "idle":
+            found_final_answer = True
+        case _:
+            pass
+
+    return found_final_answer, final_answer
+
+
+def handle_basic_worker(worker: Agent, user_input: str, research: list[str], calculations: list[str], final_answer):
+    """Runs worker with no role defined"""
+    formatted_research = "\n".join([f"- {item}" for item in research]) if research else "None"
+    formatted_calculations = "\n".join([f"- {item}" for item in calculations]) if calculations else "None"
+    input = f"""
+    QUESTION: {user_input}
+
+    RESEARCH: \n{formatted_research}
+    
+    CALCULATIONS: \n{formatted_calculations}
+    """
+    try:
+        response = run_basic_worker(worker, input=input, temperature=0.05, max_tokens=2000)
+        return handle_response(response, research, calculations, final_answer)
+    except StatusMismatchException:
+        print("Worker responded with wrong status code. Correct response:")
+        print(StatusMismatchException)
+
+
+def no_roles_defined(user_input: str):
+    """Model with no roles defined (agents have the same roles)"""
+    workers = [Agent(model=MODEL_REGULAR, role=NO_ROLE_WORKER) for _ in range(N_NO_ROLE_WORKERS)]
+    found_final_answer = False
+    final_answer = None
+    research = []
+    calculations = []
+    if CONSOLE_LOGS:
+        print("START SOLVING")
+    while not found_final_answer:
+        idx = 1
+        for worker in workers:
+            if CONSOLE_LOGS:
+                print(f"Worker{idx}:")
+            try:
+                found_final_answer, final_answer = handle_basic_worker(worker=worker, user_input=user_input,
+                                                                   research=research, calculations=calculations,
+                                                                   final_answer=final_answer)
+            except StagnationException:
+                print("Could not find final answer.")
+                if calculations:
+                    print("Last calculation: ", calculations[-1])
+            idx += 1
+
+    print("FINAL ANSWER: ", final_answer)
+
+
 def main():
     check_ollama_model(MODEL_LIGHT_ANALYTICAL)
     check_ollama_model(MODEL_REGULAR)
     check_ollama_model(MODEL_HEAVY)
 
     try:
-        agent_researcher = Agent(model=MODEL_LIGHT_ANALYTICAL, role=ROLE_RESEARCHER)
-        agent_evaluator = Agent(model=MODEL_REGULAR, role=ROLE_EVALUATOR)
         user_input = input("> ")
+        # if CONSOLE_LOGS:
+        #     print("User input: ", user_input)
 
-        research = handle_research(agent=agent_researcher, user_input=user_input, temperature=0.15, max_tokens=2000)
-        if CONSOLE_LOGS:
-            print(research)
-
-        results = handle_calculations(evaluator=agent_evaluator, user_input=user_input,
-                                      research=research, max_tokens=2000)
-
-        print("AGENT EVALUATION: ", results)
-
+        # different_roles_defined(user_input)
+        no_roles_defined(user_input)
     finally:
         quit_ollama(MODEL_LIGHT_ANALYTICAL)
         quit_ollama(MODEL_REGULAR)
