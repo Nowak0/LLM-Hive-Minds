@@ -8,6 +8,7 @@ CONSOLE_LOGS = False
 
 
 def console_log(message):
+    """Prints the message to console when the option is selected"""
     if CONSOLE_LOGS:
         print(message)
 
@@ -35,6 +36,7 @@ def run_agent(agent: Agent, insight: dict, temperature: float = None, max_tokens
 
 
 def run_worker(agent: Agent, insight: dict, temperature: float, max_tokens: int):
+    """Runs worker with selected options"""
     result = run_agent(agent=agent, insight=insight, temperature=temperature, max_tokens=max_tokens)
 
     try:
@@ -44,6 +46,7 @@ def run_worker(agent: Agent, insight: dict, temperature: float, max_tokens: int)
 
 
 def handle_new_information(information_arr: list[str], new_information: str):
+    """Adds new information to a list"""
     console_log(f"\tNew information: {new_information}")
 
     if new_information not in information_arr:
@@ -58,6 +61,7 @@ def handle_new_information(information_arr: list[str], new_information: str):
 
 
 def handle_response(response, insight: dict):
+    """Handles a response by status"""
     console_log(f"\tThought process:\n\t- {response.get('thought')}")
 
     status = response.get('status')
@@ -88,11 +92,9 @@ def handle_worker(worker: Agent, insight: dict):
     """Runs worker with no role defined"""
     try:
         response = run_worker(worker, insight=insight, temperature=0.05, max_tokens=2000)
-        return handle_response(response, insight)
+        handle_response(response, insight)
     except StatusMismatchException as e:
-        print("Worker responded with wrong status code. Correct response:", e)
-        return None
-
+        console_log(f"Worker responded with wrong status code. Correct response: {e}")
 
 def prepare_workers(user_input: str, console_logs_bool: bool, n_workers: int, used_models: list):
     """Model with no roles defined (agents have the same roles)"""
