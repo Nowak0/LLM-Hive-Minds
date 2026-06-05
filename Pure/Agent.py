@@ -14,8 +14,9 @@ def check_ollama_model(model: str):
             text=True,
             check=True
         )
-        installed = {line.split()[0] for line in result.stdout.splitlines()[1:] if line.strip()}
-        if model not in installed:
+        if model in result.stdout:
+            return
+        else:
             subprocess.run(["ollama", "pull", model], check=True)
     except subprocess.CalledProcessError as e:
         print(f"Error while checking or pulling model '{model}':\n{e}")
@@ -49,7 +50,8 @@ class Agent():
             "messages": prompt,
             "options": {
                 "temperature": temperature,
-                "num_predict": max_tokens
+                "num_predict": max_tokens,
+                "no_cache": True,
             },
             "stream": False,
             "format": "json"
