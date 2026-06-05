@@ -92,11 +92,9 @@ def handle_worker(worker: Agent, insight: dict):
     """Runs worker with no role defined"""
     try:
         response = run_worker(worker, insight=insight, temperature=0.05, max_tokens=2000)
-        return handle_response(response, insight)
+        handle_response(response, insight)
     except StatusMismatchException as e:
         console_log(f"Worker responded with wrong status code. Correct response: {e}")
-        return None
-
 
 def prepare_workers(user_input: str, console_logs_bool: bool, n_workers: int, used_models: list):
     """Model with no roles defined (agents have the same roles)"""
