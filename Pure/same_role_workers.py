@@ -38,14 +38,13 @@ def run_worker(agent: Agent, insight: dict, temperature: float, max_tokens: int)
     result = run_agent(agent=agent, insight=insight, temperature=temperature, max_tokens=max_tokens)
 
     try:
-        data = json.loads(result)
-        return data
+        return json.loads(result)
     except json.decoder.JSONDecodeError:
         raise RuntimeError("Calculation agent failed to produce valid JSON")
 
 
 def handle_new_information(information_arr: list[str], new_information: str):
-    console_log(f"\tNew information {new_information}")
+    console_log(f"\tNew information: {new_information}")
 
     if new_information not in information_arr:
         information_arr.append(new_information)
@@ -65,16 +64,18 @@ def handle_response(response, insight: dict):
     console_log(f"\tStatus: {status}")
 
     if status == 'research':
+        if response.get('calculation') is not None:
+            raise StatusMismatchException(f"Wrong status error. Response: {response.get('calculation')}")
+
         if response.get('research') is None:
             handle_new_information(insight.get('research'), response.get('thought'))
         else:
             handle_new_information(insight.get('research'), response.get('research'))
-        if response.get('calculation') is not None:
-            raise StatusMismatchException(f"Wrong status error. Response: {response.get('calculation')}")
     elif status == 'calculating':
-        handle_new_information(insight.get('calculations'), response.get('calculation'))
         if response.get('research') is not None:
             raise StatusMismatchException(f"Wrong status error. Response: {response.get('research')}")
+
+        handle_new_information(insight.get('calculations'), response.get('calculation'))
     elif status == 'done':
         insight['final_answer'] = response.get('final_answer')
     elif status == 'idle':
@@ -93,10 +94,10 @@ def handle_worker(worker: Agent, insight: dict):
         return None
 
 
-def prepare_workers(user_input: str, new_console_logs: int, n_workers: int, used_models: list):
+def prepare_workers(user_input: str, console_logs_bool: bool, n_workers: int, used_models: list):
     """Model with no roles defined (agents have the same roles)"""
     global CONSOLE_LOGS
-    CONSOLE_LOGS = new_console_logs
+    CONSOLE_LOGS = console_logs_bool
 
     workers = [Agent(model=used_models[i % len(used_models)], role=WORKER) for i in range(n_workers)]
     insight = {
@@ -114,12 +115,12 @@ def prepare_workers(user_input: str, new_console_logs: int, n_workers: int, used
 
             try:
                 handle_worker(worker=worker, insight=insight)
-                console_log(
-                    f"\tUPDATED RES AND CALC: {insight.get('research')}\n\t{insight.get('calculations')}\n\t{insight.get('final_answer')}")
+                console_log(f"\tTotal research:\n\t\t{insight.get('research')}")
+                console_log(f"\tTotal calculations:\n\t\t{insight.get('calculations')}\n")
             except StagnationException:
                 print("Could not find final answer.")
                 if insight.get('calculations'):
                     print("Last calculation: ", insight.get('calculations')[-1])
-                return
+                return None
 
-    print("FINAL ANSWER: ", insight.get('final_answer'))
+    return insight.get('final_answer')

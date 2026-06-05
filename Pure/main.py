@@ -23,7 +23,8 @@ def main():
             check_ollama_model(model)
 
         user_input = input("> ")
-        prepare_workers(user_input, CONSOLE_LOGS, N_WORKERS, USED_MODELS)
+        final_answer = prepare_workers(user_input, CONSOLE_LOGS, N_WORKERS, USED_MODELS)
+        print("\n\nFINAL ANSWER:", final_answer, "\n\n")
     finally:
         for model in USED_MODELS:
             quit_ollama(model)
