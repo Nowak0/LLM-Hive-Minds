@@ -8,6 +8,7 @@ CONSOLE_LOGS = False
 
 
 def console_log(message):
+    """Prints the message to console when the option is selected"""
     if CONSOLE_LOGS:
         print(message)
 
@@ -35,6 +36,7 @@ def run_agent(agent: Agent, insight: dict, temperature: float = None, max_tokens
 
 
 def run_worker(agent: Agent, insight: dict, temperature: float, max_tokens: int):
+    """Runs worker with selected options"""
     result = run_agent(agent=agent, insight=insight, temperature=temperature, max_tokens=max_tokens)
 
     try:
@@ -44,6 +46,7 @@ def run_worker(agent: Agent, insight: dict, temperature: float, max_tokens: int)
 
 
 def handle_new_information(information_arr: list[str], new_information: str):
+    """Adds new information to a list"""
     console_log(f"\tNew information: {new_information}")
 
     if new_information not in information_arr:
@@ -58,6 +61,7 @@ def handle_new_information(information_arr: list[str], new_information: str):
 
 
 def handle_response(response, insight: dict):
+    """Handles a response by status"""
     console_log(f"\tThought process:\n\t- {response.get('thought')}")
 
     status = response.get('status')
