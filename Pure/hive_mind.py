@@ -1,10 +1,12 @@
 import json
+import random
 
 from Pure.Agent import Agent
 from Pure.exceptions import StatusMismatchException, StagnationException
 from Pure.prompts import WORKER
 
-CONSOLE_LOGS = False
+CONSOLE_LOGS = True
+MAX_RUNS = 16
 
 
 def console_log(message):
@@ -42,7 +44,9 @@ def run_worker(agent: Agent, insight: dict, temperature: float, max_tokens: int)
     try:
         return json.loads(result)
     except json.decoder.JSONDecodeError:
-        raise RuntimeError("Calculation agent failed to produce valid JSON")
+        print("Calculation agent failed to produce valid JSON")
+        return None
+        # raise RuntimeError("Calculation agent failed to produce valid JSON")
 
 
 def handle_new_information(information_arr: list[str], new_information: str):
@@ -52,6 +56,9 @@ def handle_new_information(information_arr: list[str], new_information: str):
     if new_information not in information_arr:
         information_arr.append(new_information)
     else:
+        if len(information_arr) >=16:
+            raise StagnationException(f"Stagnation occurred: {new_information}")
+
         stagnation_counter = 0
         for i in information_arr[-10:]:
             if i == new_information:
@@ -91,12 +98,12 @@ def handle_response(response, insight: dict):
 def handle_worker(worker: Agent, insight: dict):
     """Runs worker with no role defined"""
     try:
-        response = run_worker(worker, insight=insight, temperature=0.05, max_tokens=2000)
+        response = run_worker(worker, insight=insight, temperature=random.uniform(0.04,0.06), max_tokens=2000)
         handle_response(response, insight)
     except StatusMismatchException as e:
         console_log(f"Worker responded with wrong status code. Correct response: {e}")
 
-def prepare_workers(user_input: str, console_logs_bool: bool, n_workers: int, used_models: list):
+def prepare_hive_mind(user_input: str, console_logs_bool: bool, n_workers: int, used_models: list):
     """Model with no roles defined (agents have the same roles)"""
     global CONSOLE_LOGS
     CONSOLE_LOGS = console_logs_bool
@@ -111,7 +118,8 @@ def prepare_workers(user_input: str, console_logs_bool: bool, n_workers: int, us
     }
 
     console_log("START SOLVING")
-    while insight.get('final_answer') is None:
+    runs = 0
+    while insight.get('final_answer') is None and runs <= MAX_RUNS:
         for idx, worker in enumerate(workers, start=1):
             console_log(f"Worker{idx}:")
 
@@ -124,5 +132,7 @@ def prepare_workers(user_input: str, console_logs_bool: bool, n_workers: int, us
                 if insight.get('calculations'):
                     print("Last calculation: ", insight.get('calculations')[-1])
                 return None
+
+        runs += 1
 
     return insight.get('final_answer')

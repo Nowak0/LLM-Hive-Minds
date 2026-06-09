@@ -1,10 +1,5 @@
-import random
-import json
-
-from Pure.Agent import Agent, check_ollama_model, quit_ollama
-from Pure.exceptions import StagnationException, StatusMismatchException
-from Pure.prompts import WORKER
-from Pure.same_role_workers import prepare_workers, console_log
+from Pure.Agent import check_ollama_model, quit_ollama
+from Pure.hive_mind import prepare_hive_mind
 
 MODEL_OLD = "llama3.1:8b"
 MODEL_HEAVY = "deepseek-r1:14b"
@@ -23,7 +18,7 @@ def main():
             check_ollama_model(model)
 
         user_input = input("> ")
-        final_answer = prepare_workers(user_input, CONSOLE_LOGS, N_WORKERS, USED_MODELS)
+        final_answer = prepare_hive_mind(user_input, CONSOLE_LOGS, N_WORKERS, USED_MODELS)
         print("\n\nFINAL ANSWER:", final_answer, "\n\n")
     finally:
         for model in USED_MODELS:
