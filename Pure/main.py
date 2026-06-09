@@ -6,7 +6,7 @@ from datetime import datetime
 
 from Pure.Agent import Agent, check_ollama_model, quit_ollama
 from questions.question_bank import get_chosen_question
-
+EVALUATION_RUNS=2
 CALCULATION_RUNS = 3
 MODEL_OLD = "llama3.1:8b"
 # MODEL_HEAVY = "deepseek-r1:14b"
@@ -20,7 +20,7 @@ MODEL_LIGHT_KNOWLEDGE = "gemma2:2b"
 CALCULATOR_MODELS = [MODEL_LIGHT_ANALYTICAL, MODEL_LIGHT_KNOWLEDGE, MODEL_REGULAR_LIGHT]
 
 CONSOLE_LOGS = True
-QUESTION_BANK = True
+QUESTION_BANK = False #True
 
 ROLE_RESEARCHER = """You are a researcher that gathers insight about given math problem.
 
@@ -279,9 +279,13 @@ async def handle_calculations(evaluator: Agent, user_input: str, research: str, 
     while count_runs < CALCULATION_RUNS * 3:
         if CONSOLE_LOGS:
             print("POSSIBLE ANSWERS: \n", "\n".join(f"- {r}" for r in possible_results))
+        tasks =[]
+        for _ in range(EVALUATION_RUNS):
+            tasks.append(handle_evaluation(agent=evaluator, user_input=user_input, research=research,
+                                           results=possible_results, temperature=0.05, max_tokens=1000))
+        output_evaluation = await asyncio.gather(*tasks)
+        output_evaluation = await handle_answer(output_evaluation)
 
-        output_evaluation = await handle_evaluation(agent=evaluator, user_input=user_input, research=research,
-                                                    results=possible_results, temperature=0.05, max_tokens=1000)
         if CONSOLE_LOGS:
             print("evaluation: ", output_evaluation)
 
@@ -305,7 +309,15 @@ async def handle_calculations(evaluator: Agent, user_input: str, research: str, 
     quit_ollama(evaluator.model)
     return output_evaluation
 
-
+async def handle_answer(output_evaluation:str):
+    final_answer = output_evaluation[0]
+    i=1
+    for answer in output_evaluation:
+        if CONSOLE_LOGS:
+            print(f"Answer from evaluator {i}: {answer}")
+        if final_answer != answer:
+            return "#not_good"
+    return final_answer
 async def handle_evaluation(agent: Agent, user_input, research: str, results: str, temperature: float, max_tokens: int):
     """Adds possible results to user's query and evaluates them"""
     new_input = f"""
@@ -347,7 +359,7 @@ async def main():
             print(research)
 
         results = await handle_calculations(evaluator=agent_evaluator, user_input=question_input,
-                                            research=research, max_tokens=1000)
+                                            research=research, max_tokens=3000)
 
         print("AGENT EVALUATION: ", results)
 
