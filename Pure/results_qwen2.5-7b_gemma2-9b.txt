@@ -1,5 +1,6 @@
 {
     "question": "Find a rational approximation of \u03c0 with denominator less than 1,000",
+    "correct_answer": "355/113",
     "hive_mind": {
         "1": "355/113",
         "2": "355/113",
@@ -14,6 +15,7 @@
 
 {
     "question": "Find the length of the hypotenuse of a right triangle with legs 3 and 4",
+    "correct_answer": "5",
     "hive_mind": {
         "1": "5",
         "2": "5",
@@ -27,21 +29,8 @@
 }
 
 {
-    "question": "Let ABCD be a regular tetrahedron with side length 1. Let u = vector AB and v = vector AC. Compute the exact value of ||u + v||.",
-    "hive_mind": {
-        "1": "2*sqrt(3)/3",
-        "2": "2*sqrt(3)/3",
-        "3": "2*sqrt(3)/3"
-    },
-    "single_model": {
-        "1": "sqrt(8/3 + (4*sqrt(3))/9)",
-        "2": "sqrt(3)",
-        "3": "sqrt(3)"
-    }
-}
-
-{
     "question": "Simplify the expression sqrt(50) + sqrt(18) - sqrt(8) and provide the result in exact radical form",
+    "correct_answer": "6*sqrt(2)",
     "hive_mind": {
         "1": "6*sqrt(2)",
         "2": "6*sqrt(2)",
@@ -56,6 +45,7 @@
 
 {
     "question": "Find the derivative of f(x) = e^(2*x) * cos(x)",
+    "correct_answer": "2*e^(2*x)*cos(x) - e^(2*x)*sin(x)",
     "hive_mind": {
         "1": "2*e^(2*x)*cos(x) - e^(2*x)*sin(x)",
         "2": "e^(2x) * (2*cos(x) - sin(x))",
@@ -70,6 +60,7 @@
 
 {
     "question": "Find the height of a regular tetrahedron with side length 1",
+    "correct_answer": "sqrt(6)/3",
     "hive_mind": {
         "1": "sqrt(6)/3",
         "2": "sqrt(6)/3",
@@ -84,6 +75,7 @@
 
 {
     "question": "Find the number of trailing zeros in the decimal representation of 100!",
+    "correct_answer": "24",
     "hive_mind": {
         "1": "24",
         "2": "24",
@@ -98,6 +90,7 @@
 
 {
     "question": "Solve for x: log2(x) + log2(x - 2) = 3",
+    "correct_answer": "4",
     "hive_mind": {
         "1": null,
         "2": "4",
@@ -112,6 +105,7 @@
 
 {
     "question": "Let ABCD be a regular tetrahedron with side length 1. Let u = vector AB and v = vector AC. Compute the exact value of ||u + v||.",
+    "correct_answer": "sqrt(3)",
     "hive_mind": {
         "1": "sqrt(3)",
         "2": "sqrt(3)",
@@ -126,6 +120,7 @@
 
 {
     "question": "Determine the value of the infinite sum: 1/2 + 2/4 + 3/8 + 4/16 + ... + n/(2^n)",
+    "correct_answer": "2",
     "hive_mind": {
         "1": "2",
         "2": "2",
@@ -140,6 +135,7 @@
 
 {
     "question": "What is the probability of getting exactly 5 heads in 10 fair coin flips?",
+    "correct_answer": "63/256",
     "hive_mind": {
         "1": "63/256",
         "2": null,
