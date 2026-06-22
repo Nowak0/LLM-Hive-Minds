@@ -10,16 +10,19 @@ EVALUATION_RUNS=2
 CALCULATION_RUNS = 3
 
 MODEL_OLD = "llama3.1:8b"
-# MODEL_HEAVY = "deepseek-r1:14b"
+MODEL_HEAVY = "deepseek-r1:14b"
 MODEL_REGULAR = "qwen2.5:7b"
 MODEL_REGULAR_LIGHT = "qwen2.5:3b"
 MODEL_LIGHT_ANALYTICAL = "phi4-mini"
 MODEL_LIGHT_KNOWLEDGE = "gemma2:2b"
 
 # these models aren't the best at math but they are small an make testing easier/possible at all
-CALCULATOR_MODELS = [MODEL_LIGHT_ANALYTICAL, MODEL_LIGHT_KNOWLEDGE, MODEL_REGULAR_LIGHT]
+# CALCULATOR_MODELS = [MODEL_LIGHT_KNOWLEDGE, MODEL_LIGHT_ANALYTICAL, MODEL_LIGHT_KNOWLEDGE]
+CALCULATOR_MODELS = [MODEL_REGULAR, MODEL_LIGHT_ANALYTICAL, MODEL_REGULAR_LIGHT]
+EVALUATOR_MODELS = [MODEL_REGULAR, MODEL_REGULAR_LIGHT]
+USED_MODELS = set(CALCULATOR_MODELS + EVALUATOR_MODELS)
 
-CONSOLE_LOGS = False
+CONSOLE_LOGS = True
 QUESTION_BANK = False
 
 ROLE_RESEARCHER = """You are a researcher that gathers insight about given math problem.
@@ -236,13 +239,13 @@ async def run_worker(role: str, input: str, model: str, max_tokens: int):
         raise RuntimeError("Calculation agent failed to produce valid JSON")
 
 
-async def handle_worker(start_input: str, possible_results: str, max_tokens: int, number_of_runs: int = 1):
+async def handle_worker(start_input: str, max_tokens: int, number_of_runs: int = 1):
     tasks = []
-    for _ in range(number_of_runs):
+    for i in range(number_of_runs):
         idx = random.randint(0, len(ROLES_CALCULATOR) - 1)
         role = ROLES_CALCULATOR[idx]
         # if the models are the same for two calculators then we have a bottleneck and they're done sequentially anyway
-        chosen_model = random.choice(CALCULATOR_MODELS)
+        chosen_model = CALCULATOR_MODELS[i] if i < 3 else random.choice(CALCULATOR_MODELS)
         tasks.append(run_worker(role=role, input=start_input, model=chosen_model, max_tokens=max_tokens))
 
     results = await asyncio.gather(*tasks)
@@ -270,19 +273,18 @@ async def handle_calculations(evaluator: Agent, user_input: str, research: str, 
     if CONSOLE_LOGS:
         print("START CALCULATIONS")
 
-    results_list = await handle_worker(start_input=start_input, possible_results=possible_results,
-                                       max_tokens=max_tokens, number_of_runs=CALCULATION_RUNS)
-    # possible_results = "\n".join(f"- {r}" for r in results_list)
+    results_list = await handle_worker(start_input=start_input, max_tokens=max_tokens, number_of_runs=CALCULATION_RUNS)
     possible_results = results_list
 
     count_runs = 0
     while count_runs < CALCULATION_RUNS * 3:
         if CONSOLE_LOGS:
             print("POSSIBLE ANSWERS: \n", "\n".join(f"- {r}" for r in possible_results))
-        tasks =[]
-        for _ in range(EVALUATION_RUNS):
-            tasks.append(handle_evaluation(agent=evaluator, user_input=user_input, research=research,
-                                           results=possible_results, temperature=0.05, max_tokens=1000))
+        tasks = []
+        for i in range(EVALUATION_RUNS):
+            tasks.append(handle_evaluation(agent=Agent(model=EVALUATOR_MODELS[i%len(EVALUATOR_MODELS)], role=ROLE_EVALUATOR),
+                                           user_input=user_input, research=research,
+                                           results=possible_results, temperature=random.uniform(0.03, 0.06), max_tokens=1000))
         output_evaluation = await asyncio.gather(*tasks)
         output_evaluation = await handle_answer(output_evaluation)
 
@@ -297,10 +299,9 @@ async def handle_calculations(evaluator: Agent, user_input: str, research: str, 
         full_input = f"""{start_input}
 
         POSSIBLE ANSWERS: {results_list}"""
-        new_results = await handle_worker(start_input=full_input, possible_results=possible_results,
-                                          max_tokens=max_tokens, number_of_runs=1)
+        new_results = await handle_worker(start_input=full_input, max_tokens=max_tokens, number_of_runs=1)
 
-        possible_results += "\n".join(f"- {r}" for r in new_results)
+        possible_results += new_results
         count_runs += 1
 
     if count_runs >= CALCULATION_RUNS * 3:
@@ -318,6 +319,7 @@ async def handle_answer(output_evaluation:str):
             print(f"Answer from evaluator {i}: {answer}")
         if final_answer != answer:
             return "#not_good"
+        i+=1
     return final_answer
 
 
@@ -342,9 +344,7 @@ async def handle_evaluation(agent: Agent, user_input, research: str, results: st
 
 
 async def main():
-    check_ollama_model(MODEL_LIGHT_ANALYTICAL)
-    check_ollama_model(MODEL_REGULAR)
-    for model in CALCULATOR_MODELS:
+    for model in USED_MODELS:
         check_ollama_model(model)
 
     try:
@@ -367,9 +367,10 @@ async def main():
         print("AGENT EVALUATION: ", results)
 
     finally:
-        quit_ollama(MODEL_LIGHT_ANALYTICAL)
-        quit_ollama(MODEL_REGULAR)
-        #quit_ollama(MODEL_HEAVY)
+        for model in USED_MODELS:
+            quit_ollama(model)
+        if CONSOLE_LOGS:
+            print("\nClosed all models")
 
 
 if __name__ == "__main__":
